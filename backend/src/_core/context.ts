@@ -1,6 +1,7 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
+import { clerkClient, getAuth } from "@clerk/express";
 import type { User } from "../../drizzle/schema";
-import { sdk } from "./sdk";
+import * as db from "../db";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -14,7 +15,26 @@ export async function createContext(
   let user: User | null = null;
 
   try {
-    user = await sdk.authenticateRequest(opts.req);
+    const { userId } = getAuth(opts.req);
+    if (userId) {
+      user = (await db.getUserByOpenId(userId)) ?? null;
+
+      if (!user) {
+        const clerkUser = await clerkClient.users.getUser(userId);
+        const email = clerkUser.primaryEmailAddress?.emailAddress ?? null;
+        const name = clerkUser.fullName ?? clerkUser.username ?? email;
+        const loginMethod = clerkUser.externalAccounts[0]?.provider ?? "email";
+
+        await db.upsertUser({
+          openId: userId,
+          name,
+          email,
+          loginMethod,
+          lastSignedIn: new Date(),
+        });
+        user = (await db.getUserByOpenId(userId)) ?? null;
+      }
+    }
   } catch (error) {
     // Authentication is optional for public procedures.
     user = null;

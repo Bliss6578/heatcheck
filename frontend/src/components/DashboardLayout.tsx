@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { SignInButton, SignUpButton } from "@clerk/react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -19,7 +20,6 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import { House, LayoutDashboard, ListChecks, LogOut, MapPinned, PanelLeft, Settings2, ShieldAlert } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
@@ -71,13 +71,14 @@ export default function DashboardLayout({
               Access to this dashboard requires authentication. Continue to launch the login flow.
             </p>
           </div>
-          <Button
-            onClick={() => startLogin()}
-            size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
-          >
-            Sign in
-          </Button>
+          <div className="grid w-full grid-cols-2 gap-3">
+            <SignInButton mode="modal">
+              <Button size="lg" variant="outline">Sign in</Button>
+            </SignInButton>
+            <SignUpButton mode="modal">
+              <Button size="lg">Create account</Button>
+            </SignUpButton>
+          </div>
         </div>
       </div>
     );

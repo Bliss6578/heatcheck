@@ -5,6 +5,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "./motion.css";
+@import '@clerk/ui/themes/shadcn.css';
 
 @custom-variant dark (&:is(.dark *));
 

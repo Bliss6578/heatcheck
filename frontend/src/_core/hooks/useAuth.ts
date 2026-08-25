@@ -1,22 +1,22 @@
-import { startLogin } from "@/const";
+import { useAuth as useClerkAuth, useClerk } from "@clerk/react";
 import { trpc } from "@/lib/trpc";
 
 export function useAuth() {
-  const utils = trpc.useUtils();
-  const me = trpc.auth.me.useQuery(undefined, { retry: false });
-  const logoutMutation = trpc.auth.logout.useMutation({
-    onSuccess: async () => {
-      await utils.auth.me.invalidate();
-      window.location.assign("/");
-    },
+  const { isLoaded, isSignedIn } = useClerkAuth();
+  const { openSignIn, signOut } = useClerk();
+  const me = trpc.auth.me.useQuery(undefined, {
+    enabled: isLoaded && isSignedIn,
+    retry: false,
   });
 
   return {
     user: me.data ?? null,
-    loading: me.isLoading,
+    loading: !isLoaded || (isSignedIn && me.isLoading),
     error: me.error,
-    login: startLogin,
-    logout: () => logoutMutation.mutateAsync(),
-    isLoggingOut: logoutMutation.isPending,
+    login: () => openSignIn(),
+    logout: async () => {
+      await signOut({ redirectUrl: "/" });
+    },
+    isLoggingOut: false,
   };
 }
