@@ -1,0 +1,58 @@
+# Heatcheck Full-Stack Implementation Checklist
+
+- [x] Review the remaining functional specification and identify dependency, credential, and platform constraints.
+- [x] Define the data model, tenant boundaries, workflow states, API surface, and background-execution strategy.
+- [x] Upgrade the project to the managed full-stack application platform and preserve the existing landing page.
+- [x] Resolve the full-stack upgrade conflict and verify that the existing Heatcheck landing page remains intact.
+- [x] Reconcile post-upgrade dependencies and routing, then verify the managed application builds and starts cleanly.
+- [x] Verify that auth and typed API scaffolding coexist with public landing-page routes before feature implementation.
+- [x] Implement database schema, authorization-aware API routes, and authentication-protected product flows.
+- [x] Build FortyGuard client abstractions, bounded asynchronous job tracking, and mock-safe fallbacks.
+- [x] Build deterministic heat-risk scoring, decision records, permitted response workflows, and verification logic.
+- [x] Implement authenticated onboarding, dashboard, workspace, and location product routes using the typed Heatcheck API.
+- [x] Correct FortyGuard parameter normalization, persist submission and processing states, and fall back safely after live provider failures.
+- [x] Persist a real post-action re-evaluation outcome before completing verification workflows.
+- [x] Preserve individual FortyGuard job lifecycles when a later provider stage fails.
+- [x] Make verification conditional on confirmed operational executions and cover pending, recorded, and operational action paths with tests.
+- [x] Restrict post-action verification to a confirmed operational execution and clearly defer verification when Heatcheck only records, drafts, or approves an action.
+- [x] Add focused tests for pending, recorded, and operationally executed verification eligibility states.
+- [x] Connect live location, incident, agent, activity, analytics, and hotspot data to the product dashboard.
+- [x] Validate responsive flows, access control, error handling, and local/demo operation without external credentials.
+- [x] Add setup documentation, checkpoint the work, and provide follow-up configuration instructions.
+- [x] Expose agent run and decision data plus calculated observation analytics through the protected dashboard API and UI.
+- [x] Add workflow-level test coverage for verification deferral and execution eligibility behavior.
+- [x] Add integration-level coverage for monitoring execution and approval paths, including verification deferral behavior.
+- [x] Validate the protected dashboard with persisted monitoring data across observations, hotspots, incidents, activity, agent runs, and analytics.
+- [x] Add an execution integration that can confirm an operational change before allowing post-action verification.
+- [x] Validate protected UI error and access-control states beyond the basic API boundary checks.
+- [x] Allow organization owners and administrators to change the Heatcheck agent mode from protected settings.
+- [x] Add role-specific settings tests for owner, administrator, and lower-privilege workspace memberships.
+- [x] Document and complete a full Simulation Mode responsive validation pass for authenticated product routes.
+- [x] Validate all authenticated product routes in Simulation Mode at desktop and mobile breakpoints.
+- [x] Add role-aware mutation coverage proving owner and administrator settings updates succeed while operator and viewer updates are rejected.
+- [x] Document the protected-route loading, unauthorized, forbidden, and dashboard-error validation results.
+- [x] Audit the current public-page section order and the Intelligence card behavior at desktop and mobile breakpoints.
+- [x] Define a concise home-page narrative and a linked multi-page public site map.
+- [x] Create linked Platform, Intelligence, Solutions, and Company detail pages using the Heatcheck visual system.
+- [x] Reposition the Intelligence content so it sits in the intended home-page hierarchy.
+- [x] Ensure all Intelligence cards remain readable and reachable on mobile without horizontal-content loss.
+- [x] Shorten the home page to essential product signals and route visitors to dedicated detail pages.
+- [x] Validate public navigation, page links, desktop layouts, and mobile layouts across the revised site map.
+- [x] Exercise desktop navigation and mobile-menu links end to end across every public route.
+- [x] Configure the user-provided FortyGuard key as a server-side project secret.
+- [x] Validate the Live Mode readiness signal and ensure the key is not exposed to the client.
+- [x] Save a checkpoint and document the activated provider state without revealing credentials.
+- [x] Inspect the supplied animation reference and identify transferable motion principles without copying its assets or layout.
+- [x] Define an original Heatcheck motion system with reduced-motion support.
+- [x] Restructure the Intelligence page into a clearer, more scannable sequence of visual layers and operational outcomes.
+- [x] Add a visible public-home return path to the authenticated product shell for signed-in users.
+- [x] Validate motion behavior, Intelligence structure, home navigation, and responsive layouts at desktop and mobile breakpoints.
+- [x] Replace the clipped horizontal mobile Intelligence navigator with a fully visible stacked layer list.
+- [x] Exercise the signed-in desktop and mobile public-home controls end to end without ending the session.
+- [x] Verify the Field Signal reveal and Intelligence spotlight transitions, including reduced-motion behavior where testable.
+- [x] Audit and refine Heatcheck’s motion timing, layer transitions, navigation feedback, and signed-in return flow.
+- [x] Validate the final cinematic interaction system at desktop and mobile breakpoints.
+- [x] Audit the existing Heatcheck motion system for higher-impact scene transitions and interaction opportunities.
+- [x] Define an original high-energy thermal motion language that remains accessible and reduced-motion safe.
+- [x] Implement layered thermal transitions, reactive signal effects, and more dynamic section choreography.
+- [x] Validate the cinematic motion upgrade for visual impact, responsiveness, and usability at desktop and mobile breakpoints.
