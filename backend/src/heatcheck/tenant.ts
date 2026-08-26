@@ -8,8 +8,8 @@ import {
   organizations,
   type Location,
   type Organization,
-} from "../../drizzle/schema";
-import { getDb } from "../db";
+} from "../../drizzle/schema.js";
+import { getDb } from "../db.js";
 
 export type OrganizationRole = "OWNER" | "ADMIN" | "OPERATOR" | "VIEWER";
 

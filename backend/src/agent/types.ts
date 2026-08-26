@@ -1,4 +1,4 @@
-import type { RiskAssessment, RiskLevel } from "../heatcheck/types";
+import type { RiskAssessment, RiskLevel } from "../heatcheck/types.js";
 import type { z } from "zod";
 
 export type AgentGoal =

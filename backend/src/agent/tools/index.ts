@@ -1,19 +1,19 @@
 import { z } from "zod";
-import { FortyGuardClient, FortyGuardError } from "../../heatcheck/fortyguard";
+import { FortyGuardClient, FortyGuardError } from "../../heatcheck/fortyguard.js";
 import {
   createBoundingPolygon,
   detectHotspots,
   detectRiskChange,
-} from "../../heatcheck/geo";
-import { calculateHeatRisk } from "../../heatcheck/riskEngine";
-import { phoenixSimulation } from "../../heatcheck/simulation";
-import type { NormalizedObservation } from "../../heatcheck/types";
+} from "../../heatcheck/geo.js";
+import { calculateHeatRisk } from "../../heatcheck/riskEngine.js";
+import { phoenixSimulation } from "../../heatcheck/simulation.js";
+import type { NormalizedObservation } from "../../heatcheck/types.js";
 import {
   permissionForAgentAction,
   canExecuteAction,
-} from "../actions/permissions";
-import { ToolRegistry } from "../tool-registry";
-import type { AgentAction, AgentTool } from "../types";
+} from "../actions/permissions.js";
+import { ToolRegistry } from "../tool-registry.js";
+import type { AgentAction, AgentTool } from "../types.js";
 
 const locationSchema = z.object({
   latitude: z.number().min(-90).max(90),

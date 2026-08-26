@@ -1,9 +1,9 @@
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { clerkMiddleware } from "@clerk/express";
 import express from "express";
-import { createContext } from "./_core/context";
-import { registerStorageProxy } from "./_core/storageProxy";
-import { appRouter } from "./routers";
+import { createContext } from "./_core/context.js";
+import { registerStorageProxy } from "./_core/storageProxy.js";
+import { appRouter } from "./routers.js";
 
 export function createApp() {
   const app = express();

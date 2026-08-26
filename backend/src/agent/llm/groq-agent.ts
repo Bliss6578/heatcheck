@@ -1,8 +1,8 @@
 import Groq from "groq-sdk";
 import { z } from "zod";
-import { AGENT_CONFIG } from "../config";
-import type { AgentLLM, HeatAgentState, PlannerDecision } from "../types";
-import { HEATCHECK_AGENT_SYSTEM_PROMPT } from "./prompts";
+import { AGENT_CONFIG } from "../config.js";
+import type { AgentLLM, HeatAgentState, PlannerDecision } from "../types.js";
+import { HEATCHECK_AGENT_SYSTEM_PROMPT } from "./prompts.js";
 
 const completeSchema = z.object({
   type: z.literal("COMPLETE"),

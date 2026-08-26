@@ -1,4 +1,4 @@
-import type { NormalizedObservation, RiskAssessment, RiskLevel } from "./types";
+import type { NormalizedObservation, RiskAssessment, RiskLevel } from "./types.js";
 
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 const presentScore = (value: number | null, start: number, end: number) =>

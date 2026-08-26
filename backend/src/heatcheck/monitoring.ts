@@ -15,21 +15,21 @@ import {
   monitoringRuns,
   organizationMembers,
   type Location,
-} from "../../drizzle/schema";
-import { getDb } from "../db";
-import { createDecisionPlan } from "./agent";
-import { FortyGuardClient } from "./fortyguard";
-import { calculateHeatRisk } from "./riskEngine";
-import { phoenixSimulation, phoenixVerificationSimulation } from "./simulation";
+} from "../../drizzle/schema.js";
+import { getDb } from "../db.js";
+import { createDecisionPlan } from "./agent.js";
+import { FortyGuardClient } from "./fortyguard.js";
+import { calculateHeatRisk } from "./riskEngine.js";
+import { phoenixSimulation, phoenixVerificationSimulation } from "./simulation.js";
 import {
   requireAdministratorRole,
   requireLocationMember,
   requireOperatorRole,
   requireWorkspaceMember,
   writeAuditLog,
-} from "./tenant";
-import type { AgentMode, NormalizedObservation } from "./types";
-import { analysisCacheKey, getCached, setCached } from "./cache";
+} from "./tenant.js";
+import type { AgentMode, NormalizedObservation } from "./types.js";
+import { analysisCacheKey, getCached, setCached } from "./cache.js";
 
 type ActionPermission = "SAFE_AUTO" | "APPROVAL_REQUIRED" | "DISABLED";
 

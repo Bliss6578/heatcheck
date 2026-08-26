@@ -7,19 +7,19 @@ import {
   autonomousAgentToolCalls,
   heatObservations,
   hotspots,
-} from "../../../drizzle/schema";
-import { getDb } from "../../db";
+} from "../../../drizzle/schema.js";
+import { getDb } from "../../db.js";
 import {
   requireLocationMember,
   requireOperatorRole,
   requireWorkspaceMember,
-} from "../../heatcheck/tenant";
-import { AGENT_CONFIG } from "../config";
-import { GroqAgentLLM } from "../llm/groq-agent";
-import { DeterministicPlanner, HybridPlanner } from "../planner";
-import { createAgentToolRegistry } from "../tools";
-import { executeRegisteredTool } from "../tool-registry";
-import type { AgentGoal, HeatAgentState } from "../types";
+} from "../../heatcheck/tenant.js";
+import { AGENT_CONFIG } from "../config.js";
+import { GroqAgentLLM } from "../llm/groq-agent.js";
+import { DeterministicPlanner, HybridPlanner } from "../planner.js";
+import { createAgentToolRegistry } from "../tools/index.js";
+import { executeRegisteredTool } from "../tool-registry.js";
+import type { AgentGoal, HeatAgentState } from "../types.js";
 
 async function requireDb() {
   const db = await getDb();

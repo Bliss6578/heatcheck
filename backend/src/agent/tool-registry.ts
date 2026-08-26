@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import type { AgentTool, HeatAgentState, ToolExecutionContext } from "./types";
+import type { AgentTool, HeatAgentState, ToolExecutionContext } from "./types.js";
 
 export class ToolRegistry {
   private readonly tools = new Map<string, AgentTool>();

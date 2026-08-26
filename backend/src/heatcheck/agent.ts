@@ -1,4 +1,4 @@
-import type { DecisionPlan, ProposedAction, RiskAssessment } from "./types";
+import type { DecisionPlan, ProposedAction, RiskAssessment } from "./types.js";
 
 const permittedActionTypes = ["RECORD_INCIDENT_NOTE", "DRAFT_HEAT_ALERT", "REQUEST_OUTDOOR_TASK_SHIFT", "ACTIVATE_HEATCHECK_PROTOCOL", "START_VERIFICATION"] as const;
 

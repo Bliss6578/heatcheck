@@ -1,4 +1,4 @@
-import type { NormalizedObservation } from "./types";
+import type { NormalizedObservation } from "./types.js";
 
 /**
  * Explicit simulation fixtures for the Phoenix Distribution Center journey.

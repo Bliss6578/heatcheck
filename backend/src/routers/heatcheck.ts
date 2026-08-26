@@ -5,7 +5,7 @@ import {
   protectedProcedure,
   publicProcedure,
   router,
-} from "../_core/trpc";
+} from "../_core/trpc.js";
 import {
   createLocation,
   createWorkspace,
@@ -16,18 +16,18 @@ import {
   updateWorkspaceSettings,
   updateLocationMonitoring,
   writeAuditLog,
-} from "../heatcheck/tenant";
+} from "../heatcheck/tenant.js";
 import {
   approveAction,
   getDashboardData,
   runMonitoring,
-} from "../heatcheck/monitoring";
-import { AGENT_CONFIG } from "../agent/config";
+} from "../heatcheck/monitoring.js";
+import { AGENT_CONFIG } from "../agent/config.js";
 import {
   getAutonomousAgentRun,
   listAutonomousAgentRuns,
   runAutonomousAgent,
-} from "../agent/orchestrator/run-agent";
+} from "../agent/orchestrator/run-agent.js";
 
 const latitude = z.number().finite().min(-90).max(90);
 const longitude = z.number().finite().min(-180).max(180);

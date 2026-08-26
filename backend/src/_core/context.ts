@@ -1,7 +1,7 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import { clerkClient, getAuth } from "@clerk/express";
-import type { User } from "../../drizzle/schema";
-import * as db from "../db";
+import type { User } from "../../drizzle/schema.js";
+import * as db from "../db.js";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];

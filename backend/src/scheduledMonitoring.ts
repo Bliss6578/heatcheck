@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
-import { sdk } from "./_core/sdk";
-import { runDueMonitoring } from "./heatcheck/monitoring";
+import { sdk } from "./_core/sdk.js";
+import { runDueMonitoring } from "./heatcheck/monitoring.js";
 
 export function registerScheduledMonitoring(app: Express) {
   app.post("/api/scheduled/heatcheck-monitoring", async (req: Request, res: Response) => {

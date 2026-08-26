@@ -1,5 +1,5 @@
-import { riskLevelForScore } from "./riskEngine";
-import type { RiskLevel } from "./types";
+import { riskLevelForScore } from "./riskEngine.js";
+import type { RiskLevel } from "./types.js";
 
 type Position = [number, number];
 export type PolygonFeatureCollection = {

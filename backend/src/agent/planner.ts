@@ -1,5 +1,5 @@
-import type { AgentLLM, HeatAgentState, PlannerDecision } from "./types";
-import type { ToolRegistry } from "./tool-registry";
+import type { AgentLLM, HeatAgentState, PlannerDecision } from "./types.js";
+import type { ToolRegistry } from "./tool-registry.js";
 
 const required = [
   "get_previous_analysis",

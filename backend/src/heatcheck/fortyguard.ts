@@ -1,5 +1,5 @@
-import type { NormalizedObservation } from "./types";
-import { createBoundingPolygon, detectHotspots } from "./geo";
+import type { NormalizedObservation } from "./types.js";
+import { createBoundingPolygon, detectHotspots } from "./geo.js";
 
 const FORTYGUARD_BASE_URL = `${(process.env.FORTYGUARD_BASE_URL ?? "https://api.fortyguard.com").replace(/\/$/, "")}/v1`;
 const MAX_POLL_ATTEMPTS = Number(

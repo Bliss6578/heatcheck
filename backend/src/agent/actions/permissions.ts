@@ -1,4 +1,4 @@
-import type { AgentAction, ToolRisk } from "../types";
+import type { AgentAction, ToolRisk } from "../types.js";
 const permissions: Record<AgentAction["type"], ToolRisk> = {
   STORE_ANALYSIS: "SAFE",
   CREATE_ALERT: "CONTROLLED",
