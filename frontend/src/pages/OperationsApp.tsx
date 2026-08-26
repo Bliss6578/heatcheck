@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import * as L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 const productTabs = [
   "/app",
@@ -59,26 +61,6 @@ type MappableLocation = {
   longitude: number;
 };
 
-let googleMapsPromise: Promise<void> | null = null;
-
-function loadGoogleMaps(apiKey: string) {
-  if (window.google?.maps) return Promise.resolve();
-  if (googleMapsPromise) return googleMapsPromise;
-  googleMapsPromise = new Promise((resolve, reject) => {
-    const callback = `initHeatcheckMap_${Date.now()}`;
-    (window as typeof window & Record<string, unknown>)[callback] = () => {
-      delete (window as typeof window & Record<string, unknown>)[callback];
-      resolve();
-    };
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&callback=${callback}&v=weekly`;
-    script.async = true;
-    script.onerror = () => reject(new Error("Google Maps could not load."));
-    document.head.appendChild(script);
-  });
-  return googleMapsPromise;
-}
-
 function heatColor(score: number) {
   if (score >= 40) return "#d94032";
   if (score >= 35) return "#ff6b2c";
@@ -98,106 +80,68 @@ function LocationMap({
   geojson?: unknown;
 }) {
   const mapNode = useRef<HTMLDivElement>(null);
-  const [mapMode, setMapMode] = useState<"roadmap" | "satellite" | "street">("roadmap");
-  const [mapReady, setMapReady] = useState(false);
-  const mapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-  const googleMapUrl = selectedLocation
-    ? `https://maps.google.com/maps?q=${encodeURIComponent(`${selectedLocation.latitude},${selectedLocation.longitude}`)}&z=13&output=embed`
-    : null;
+  const [mapMode, setMapMode] = useState<"streets" | "terrain">("streets");
 
   useEffect(() => {
-    if (!mapsApiKey || !selectedLocation || !mapNode.current) return;
-    let disposed = false;
-    loadGoogleMaps(mapsApiKey)
-      .then(() => {
-        if (disposed || !mapNode.current || !selectedLocation) return;
-        const center = {
-          lat: selectedLocation.latitude,
-          lng: selectedLocation.longitude,
-        };
-        if (mapMode === "street") {
-          new google.maps.StreetViewPanorama(mapNode.current, {
-            position: center,
-            pov: { heading: 34, pitch: 4 },
-            zoom: 1,
-          });
-        } else {
-          const map = new google.maps.Map(mapNode.current, {
-            center,
-            zoom: 13,
-            mapTypeId: mapMode,
-            streetViewControl: true,
-            fullscreenControl: true,
-          });
-          new google.maps.Marker({ map, position: center, title: selectedLocation.name });
-          if (geojson && typeof geojson === "object") {
-            try {
-              const features = map.data.addGeoJson(geojson as GeoJSON.GeoJsonObject);
-              map.data.setStyle(feature => {
-                const temperature = Number(
-                  feature.getProperty("temperature") ??
-                    feature.getProperty("Temperature") ??
-                    feature.getProperty("tcm") ??
-                    0
-                );
-                return {
-                  fillColor: heatColor(temperature),
-                  fillOpacity: 0.58,
-                  strokeColor: heatColor(temperature),
-                  strokeOpacity: 0.9,
-                  strokeWeight: 1,
-                };
-              });
-              if (features.length) {
-                const bounds = new google.maps.LatLngBounds();
-                features.forEach(feature =>
-                  feature.getGeometry()?.forEachLatLng(point => bounds.extend(point))
-                );
-                if (!bounds.isEmpty()) map.fitBounds(bounds, 32);
-              }
-            } catch (error) {
-              console.warn("Heatcheck could not render provider GeoJSON.", error);
-            }
-          }
-        }
-        setMapReady(true);
-      })
-      .catch(() => setMapReady(false));
-    return () => {
-      disposed = true;
-    };
-  }, [geojson, mapMode, mapsApiKey, selectedLocation]);
+    if (!selectedLocation || !mapNode.current) return;
+    const map = L.map(mapNode.current, { zoomControl: true }).setView(
+      [selectedLocation.latitude, selectedLocation.longitude], 13
+    );
+    const tiles = mapMode === "terrain"
+      ? "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
+      : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+    L.tileLayer(tiles, {
+      maxZoom: mapMode === "terrain" ? 17 : 19,
+      attribution: mapMode === "terrain"
+        ? '&copy; OpenStreetMap contributors, SRTM | Map style &copy; OpenTopoMap'
+        : '&copy; OpenStreetMap contributors',
+    }).addTo(map);
+    const marker = L.circleMarker([selectedLocation.latitude, selectedLocation.longitude], {
+      radius: 8, color: "#fff", weight: 2, fillColor: "#ff6b2c", fillOpacity: 1,
+    }).addTo(map);
+    const markerLabel = document.createElement("strong");
+    markerLabel.textContent = selectedLocation.name;
+    marker.bindPopup(markerLabel);
+    if (geojson && typeof geojson === "object") {
+      try {
+        const layer = L.geoJSON(geojson as GeoJSON.GeoJsonObject, {
+          style: feature => {
+            const props = feature?.properties ?? {};
+            const temperature = Number(props.temperature ?? props.Temperature ?? props.tcm ?? 0);
+            const color = heatColor(temperature);
+            return { color, fillColor: color, fillOpacity: .58, weight: 1 };
+          },
+          onEachFeature: (feature, featureLayer) => {
+            const value = feature.properties?.temperature ?? feature.properties?.Temperature ?? feature.properties?.tcm;
+            if (value != null) featureLayer.bindTooltip(`${Number(value).toFixed(1)}°C`);
+          },
+        }).addTo(map);
+        if (layer.getBounds().isValid()) map.fitBounds(layer.getBounds(), { padding: [24, 24] });
+      } catch (error) { console.warn("Heatcheck could not render provider GeoJSON.", error); }
+    }
+    setTimeout(() => map.invalidateSize(), 0);
+    return () => { map.remove(); };
+  }, [geojson, mapMode, selectedLocation]);
 
   return (
     <div className="ops-live-map" aria-label="Monitored location map">
-      {mapsApiKey && selectedLocation ? (
+      {selectedLocation ? (
         <div ref={mapNode} className="ops-google-map" />
-      ) : googleMapUrl ? (
-        <iframe
-          key={selectedLocation?.id}
-          title={`${selectedLocation?.name ?? "Selected location"} on Google Maps`}
-          src={googleMapUrl}
-          loading="lazy"
-          allowFullScreen
-          referrerPolicy="no-referrer-when-downgrade"
-        />
       ) : (
         <div className="ops-live-map__empty">Add a location to open Google Maps.</div>
       )}
       {selectedLocation && (
         <div className="ops-map-mode-switcher">
-          {(["roadmap", "satellite", "street"] as const).map(mode => (
+          {(["streets", "terrain"] as const).map(mode => (
             <button
               type="button"
               key={mode}
               className={mapMode === mode ? "is-selected" : ""}
               onClick={() => setMapMode(mode)}
-              disabled={!mapsApiKey && mode !== "roadmap"}
             >
-              {mode === "roadmap" ? "Heat map" : mode}
+              {mode === "streets" ? "Heat map" : mode}
             </button>
           ))}
-          {mapsApiKey && !mapReady && <span>Loading map…</span>}
         </div>
       )}
       {locations.length > 1 && (

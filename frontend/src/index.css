@@ -229,3 +229,6 @@ h1, h2, h3, p { margin-top: 0; }
 .ops-run-detail ol { display: grid; gap: .55rem; margin: 1rem 0; padding: 0; list-style: none; }
 .ops-run-detail li, .ops-run-detail > div { display: flex; justify-content: space-between; gap: 1rem; padding-bottom: .5rem; border-bottom: 1px solid var(--line); font-size: .7rem; }
 .ops-run-detail span { color: var(--ink-soft); font-family: "DM Mono", monospace; }
+.ops-live-map .leaflet-container { width: 100%; height: 100%; min-height: 430px; background: #d9ddd4; font-family: inherit; }
+.ops-live-map .leaflet-control-attribution { font-size: 9px; }
+.ops-live-map .leaflet-popup-content { color: var(--basalt); }
