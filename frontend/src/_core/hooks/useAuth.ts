@@ -1,18 +1,21 @@
-import { useAuth as useClerkAuth, useClerk } from "@clerk/react";
-import { trpc } from "@/lib/trpc";
+import { useAuth as useClerkAuth, useClerk, useUser } from "@clerk/react";
 
 export function useAuth() {
   const { isLoaded, isSignedIn } = useClerkAuth();
   const { openSignIn, signOut } = useClerk();
-  const me = trpc.auth.me.useQuery(undefined, {
-    enabled: isLoaded && isSignedIn,
-    retry: false,
-  });
+  const { user: clerkUser } = useUser();
+  const user = isSignedIn && clerkUser
+    ? {
+        id: clerkUser.id,
+        name: clerkUser.fullName ?? clerkUser.username ?? "Heatcheck user",
+        email: clerkUser.primaryEmailAddress?.emailAddress ?? null,
+      }
+    : null;
 
   return {
-    user: me.data ?? null,
-    loading: !isLoaded || (isSignedIn && me.isLoading),
-    error: me.error,
+    user,
+    loading: !isLoaded,
+    error: null,
     login: () => openSignIn(),
     logout: async () => {
       await signOut({ redirectUrl: "/" });
