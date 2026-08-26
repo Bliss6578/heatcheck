@@ -15,6 +15,9 @@ export function createApp() {
       process.env.CLERK_PUBLISHABLE_KEY ??
       process.env.VITE_CLERK_PUBLISHABLE_KEY,
   }));
+  app.get("/api/health", (_req, res) => {
+    res.status(200).json({ ok: true });
+  });
   registerStorageProxy(app);
   app.use(
     "/api/trpc",

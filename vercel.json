@@ -3,11 +3,15 @@
   "buildCommand": "pnpm vercel-build",
   "outputDirectory": "public",
   "functions": {
-    "api/**/*.ts": {
+    "api/index.ts": {
       "maxDuration": 60
     }
   },
   "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/index?__path=:path*"
+    },
     {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
