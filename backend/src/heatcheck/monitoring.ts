@@ -307,7 +307,6 @@ export async function runMonitoring(input: {
 
   const monitoringRunId = nanoid();
   let mode: "SIMULATION" | "LIVE" =
-    workspace.organization.simulationMode ||
     process.env.HEATCHECK_MOCK_MODE === "true" ||
     process.env.FORTYGUARD_ENABLED === "false" ||
     !process.env.FORTYGUARD_API_KEY
@@ -1116,6 +1115,15 @@ export async function getDashboardData(input: {
     : { sampleCount: 0, averageRisk: null, highestRisk: null, trend: [] };
   return {
     workspace: { organization: workspace.organization, role: workspace.role },
+    provider: {
+      managed: true as const,
+      mode:
+        process.env.HEATCHECK_MOCK_MODE !== "true" &&
+        process.env.FORTYGUARD_ENABLED !== "false" &&
+        Boolean(process.env.FORTYGUARD_API_KEY)
+          ? ("LIVE" as const)
+          : ("FALLBACK" as const),
+    },
     locations: organizationLocations,
     latestObservation: observation,
     hotspots: latestHotspots,

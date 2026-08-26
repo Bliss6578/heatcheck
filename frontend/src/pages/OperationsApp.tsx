@@ -51,6 +51,65 @@ function displayRisk(level?: string | null) {
       : (level ?? "AWAITING DATA").replaceAll("_", " ");
 }
 
+type MappableLocation = {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+};
+
+function LocationMap({
+  locations,
+  selectedLocation,
+  onSelect,
+}: {
+  locations: MappableLocation[];
+  selectedLocation?: MappableLocation;
+  onSelect?: (id: string) => void;
+}) {
+  return (
+    <div className="ops-live-map" aria-label="Monitored location map">
+      <svg viewBox="0 0 1000 500" role="img">
+        <title>Heatcheck monitored locations</title>
+        <path className="ops-map-land" d="M83 109l72-49 105 17 54 47-24 51-58 24-27 66-55 24-56-53-47-35 16-49zm264-5 62-42 92 11 29 46-23 35 44 51-30 78-54 17-34-42-34-10-17-67-48-31zm239-9 71-31 105 23 91 68-24 52-72 15-42-18-52 43-65-16-25-61zm44 198 55-28 68 26 37 57-25 54-81 15-52-47z" />
+        <path className="ops-map-grid" d="M0 100h1000M0 200h1000M0 300h1000M0 400h1000M200 0v500M400 0v500M600 0v500M800 0v500" />
+        {locations.map(location => {
+          const x = ((location.longitude + 180) / 360) * 1000;
+          const y = ((90 - location.latitude) / 180) * 500;
+          const selected = selectedLocation?.id === location.id;
+          return (
+            <g
+              key={location.id}
+              className={selected ? "ops-map-marker is-selected" : "ops-map-marker"}
+              transform={`translate(${x} ${y})`}
+              onClick={() => onSelect?.(location.id)}
+              role="button"
+              tabIndex={0}
+              aria-label={`Select ${location.name}`}
+            >
+              <circle r={selected ? 15 : 10} />
+              <circle r="4" />
+            </g>
+          );
+        })}
+      </svg>
+      {selectedLocation ? (
+        <div className="ops-live-map__label">
+          <MapPinned size={16} />
+          <span>
+            {selectedLocation.name}
+            <small>
+              {selectedLocation.latitude.toFixed(4)}°, {selectedLocation.longitude.toFixed(4)}°
+            </small>
+          </span>
+        </div>
+      ) : (
+        <div className="ops-live-map__label">Add a location to begin monitoring.</div>
+      )}
+    </div>
+  );
+}
+
 function Onboarding() {
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
@@ -94,9 +153,9 @@ function Onboarding() {
       </div>
       <h1>Calibrate the first operational location.</h1>
       <p>
-        Heatcheck stores a tenant-bound workspace and begins in{" "}
-        <strong>Simulation Mode</strong> until live provider credentials are
-        added.
+        Add the first place you want Heatcheck to monitor. Live heat
+        intelligence and the response agent use Heatcheck's managed provider
+        integration—no personal API key is required.
       </p>
       <form onSubmit={submit} className="ops-form">
         <div>
@@ -162,6 +221,7 @@ function OperationsContent() {
   const [newLocationName, setNewLocationName] = useState("");
   const [newLatitude, setNewLatitude] = useState("");
   const [newLongitude, setNewLongitude] = useState("");
+  const [selectedLocationId, setSelectedLocationId] = useState("");
   const [agentCommand, setAgentCommand] = useState(
     "Analyze this location and explain any change."
   );
@@ -238,10 +298,13 @@ function OperationsContent() {
     ? path
     : "/app";
   const firstLocation = data.locations[0];
-  const canRun = Boolean(firstLocation) && !run.isPending;
+  const selectedLocation =
+    data.locations.find(location => location.id === selectedLocationId) ??
+    firstLocation;
+  const canRun = Boolean(selectedLocation) && !run.isPending;
   const runNow = () =>
-    firstLocation &&
-    run.mutate({ organizationId, locationId: firstLocation.id });
+    selectedLocation &&
+    run.mutate({ organizationId, locationId: selectedLocation.id });
 
   return (
     <div className="ops-shell">
@@ -259,12 +322,12 @@ function OperationsContent() {
         <div className="ops-header__status">
           <span
             className={
-              data.workspace.organization.simulationMode
+              data.provider.mode !== "LIVE"
                 ? "ops-status ops-status--simulation"
                 : "ops-status"
             }
           >
-            {data.workspace.organization.simulationMode
+            {data.provider.mode !== "LIVE"
               ? "SIMULATION MODE"
               : "LIVE MODE"}
           </span>
@@ -280,8 +343,9 @@ function OperationsContent() {
       )}
       {run.data?.mode === "SIMULATION" && (
         <p className="ops-notice">
-          This run uses the explicitly labelled Phoenix simulation fixture
-          because live provider credentials are not configured.
+          The managed live provider was temporarily unavailable, so this run
+          used clearly labelled fallback data. Users never need to supply a
+          provider key.
         </p>
       )}
 
@@ -319,10 +383,10 @@ function OperationsContent() {
             <form
               onSubmit={event => {
                 event.preventDefault();
-                if (firstLocation)
+                if (selectedLocation)
                   agentCommandMutation.mutate({
                     organizationId,
-                    locationId: firstLocation.id,
+                    locationId: selectedLocation.id,
                     command: agentCommand,
                   });
               }}
@@ -334,7 +398,7 @@ function OperationsContent() {
               />
               <Button
                 type="submit"
-                disabled={!firstLocation || agentCommandMutation.isPending}
+                disabled={!selectedLocation || agentCommandMutation.isPending}
               >
                 {agentCommandMutation.isPending ? (
                   <Loader2 className="animate-spin" />
@@ -432,33 +496,23 @@ function OperationsContent() {
             <div className="ops-panel__head">
               <div>
                 <span>Spatial heat layer</span>
-                <small>{firstLocation?.name ?? "No location"}</small>
+                <small>{selectedLocation?.name ?? "No location"}</small>
               </div>
               <MapPinned size={18} />
             </div>
-            {data.hotspots.length ? (
-              <div className="ops-hotspot-map">
-                {data.hotspots.map((hotspot, index) => (
-                  <div
-                    key={hotspot.id}
-                    className="ops-hotspot"
-                    style={{
-                      left: `${32 + index * 23}%`,
-                      top: `${33 + (index % 2) * 28}%`,
-                    }}
-                  >
-                    <i />
-                    <span>
-                      {hotspot.label}
-                      <b>{hotspot.temperature.toFixed(1)}°C</b>
-                    </span>
-                  </div>
+            <LocationMap
+              locations={data.locations}
+              selectedLocation={selectedLocation}
+              onSelect={setSelectedLocationId}
+            />
+            {data.hotspots.length > 0 && (
+              <div className="ops-map-alerts">
+                {data.hotspots.slice(0, 4).map(hotspot => (
+                  <span key={hotspot.id}>
+                    <i /> {hotspot.label}
+                    <strong>{hotspot.temperature.toFixed(1)}°C</strong>
+                  </span>
                 ))}
-              </div>
-            ) : (
-              <div className="ops-empty">
-                Run an analysis to create the first persisted thermal
-                observation.
               </div>
             )}
           </article>
@@ -676,7 +730,7 @@ function OperationsContent() {
             </div>
             <Button onClick={runNow} disabled={!canRun}>
               {run.isPending ? <Loader2 className="animate-spin" /> : <Play />}{" "}
-              Analyze first location
+              Analyze selected location
             </Button>
           </div>
           <form
@@ -738,8 +792,31 @@ function OperationsContent() {
           {createLocation.error && (
             <p className="ops-form__error">{createLocation.error.message}</p>
           )}
+          <div className="ops-location-map-layout">
+            <LocationMap
+              locations={data.locations}
+              selectedLocation={selectedLocation}
+              onSelect={setSelectedLocationId}
+            />
+            <div className="ops-location-map-copy">
+              <span>SELECTED FIELD SITE</span>
+              <h3>{selectedLocation?.name ?? "No location selected"}</h3>
+              <p>
+                Select a monitored site, then let Heatcheck retrieve its heat
+                conditions, classify alerts, and prepare a governed response.
+              </p>
+              <Button onClick={runNow} disabled={!canRun}>
+                {run.isPending ? <Loader2 className="animate-spin" /> : <Bot />}
+                Check heat conditions
+              </Button>
+            </div>
+          </div>
           {data.locations.map(location => (
-            <article key={location.id} className="ops-location">
+            <article
+              key={location.id}
+              className={`ops-location${selectedLocation?.id === location.id ? " ops-location--selected" : ""}`}
+              onClick={() => setSelectedLocationId(location.id)}
+            >
               <div>
                 <span className="ops-location__index">
                   {location.monitoringEnabled ? "MONITORING" : "PAUSED"}
@@ -875,15 +952,16 @@ function OperationsContent() {
               )}
             </div>
             <div>
-              <span>Provider mode</span>
+              <span>Heat intelligence service</span>
               <strong>
-                {data.workspace.organization.simulationMode
-                  ? "Simulation"
-                  : "Live"}
+                {data.provider.mode !== "LIVE"
+                  ? "Fallback mode"
+                  : "Managed · Live"}
               </strong>
               <small>
-                Add `FORTYGUARD_API_KEY` later to enable the server-side
-                FortyGuard provider adapter.
+                FortyGuard is configured once by Heatcheck on the server and
+                shared securely across customer workspaces. API credentials
+                are never requested from or exposed to users.
               </small>
             </div>
             <div>
@@ -899,8 +977,8 @@ function OperationsContent() {
                 {data.workspace.organization.monitoringIntervalMinutes} min
               </strong>
               <small>
-                Scheduled monitoring is ready for activation after the site is
-                published.
+                Heatcheck automatically checks enabled locations on the
+                workspace schedule and records alerts and agent decisions.
               </small>
             </div>
           </div>
