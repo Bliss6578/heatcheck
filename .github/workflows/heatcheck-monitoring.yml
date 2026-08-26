@@ -1,0 +1,27 @@
+name: HeatCheck recurring monitoring
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: heatcheck-production-monitoring
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Run due location analyses
+        env:
+          HEATCHECK_CRON_URL: ${{ secrets.HEATCHECK_CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$HEATCHECK_CRON_URL"
+          test -n "$CRON_SECRET"
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            --max-time 290 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$HEATCHECK_CRON_URL"

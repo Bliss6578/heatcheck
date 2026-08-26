@@ -31,6 +31,7 @@ import {
 import type { AgentMode, NormalizedObservation } from "./types.js";
 import { analysisCacheKey, getCached, setCached } from "./cache.js";
 import { deliverManagedHeatAlert } from "./notifications.js";
+import { nextAdaptiveAnalysisAt } from "./adaptiveMonitoring.js";
 
 type ActionPermission = "SAFE_AUTO" | "APPROVAL_REQUIRED" | "DISABLED";
 
@@ -597,9 +598,7 @@ export async function runMonitoring(input: {
     });
 
     if (!isVerificationEligible(actions)) {
-      const nextAnalysisAt = new Date(
-        Date.now() + workspace.organization.monitoringIntervalMinutes * 60_000
-      );
+      const nextAnalysisAt = nextAdaptiveAnalysisAt(assessment.score, workspace.organization.monitoringIntervalMinutes);
       await db
         .update(locations)
         .set({ lastAnalysisAt: new Date(), nextAnalysisAt })
@@ -745,9 +744,7 @@ export async function runMonitoring(input: {
       },
     });
 
-    const nextAnalysisAt = new Date(
-      Date.now() + workspace.organization.monitoringIntervalMinutes * 60_000
-    );
+    const nextAnalysisAt = nextAdaptiveAnalysisAt(verificationAssessment.score, workspace.organization.monitoringIntervalMinutes);
     await db
       .update(locations)
       .set({ lastAnalysisAt: new Date(), nextAnalysisAt })

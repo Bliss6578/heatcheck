@@ -8,6 +8,13 @@ import { getDb, getUserByOpenId } from "./db.js";
 import { appRouter } from "./routers.js";
 import { registerScheduledMonitoring } from "./scheduledMonitoring.js";
 import { runAutonomousAgent } from "./agent/orchestrator/run-agent.js";
+import { apiRateLimit } from "./rateLimit.js";
+import { errorTelemetry, requestTelemetry } from "./observability.js";
+import { getDashboardData } from "./heatcheck/monitoring.js";
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "").replace(/[&<>'"]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]!);
+}
 
 export function createApp() {
   const app = express();
@@ -19,6 +26,8 @@ export function createApp() {
       process.env.CLERK_PUBLISHABLE_KEY ??
       process.env.VITE_CLERK_PUBLISHABLE_KEY,
   }));
+  app.use(requestTelemetry);
+  app.use(apiRateLimit);
   app.get("/api/health", async (_req, res) => {
     const configured = Boolean(process.env.DATABASE_URL);
 
@@ -82,10 +91,25 @@ export function createApp() {
       res.end();
     }
   });
+  app.get("/api/reports/heat-intelligence", async (req, res) => {
+    const { userId } = getAuth(req);
+    const user = userId ? await getUserByOpenId(userId) : null;
+    const organizationId = typeof req.query.organizationId === "string" ? req.query.organizationId : "";
+    if (!user) return res.status(401).json({ error: "Authentication required." });
+    if (!organizationId) return res.status(400).json({ error: "Workspace required." });
+    const data = await getDashboardData({ userId: user.id, organizationId });
+    const observation = data.latestObservation;
+    const rows = data.locations.map(location => `<tr><td>${escapeHtml(location.name)}</td><td>${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}</td><td>${escapeHtml(location.nextAnalysisAt)}</td></tr>`).join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Heat Intelligence Report</title><style>body{font:14px system-ui;margin:40px;color:#151515}h1{font-size:42px}table{width:100%;border-collapse:collapse}td,th{padding:10px;border:1px solid #ccc;text-align:left}.risk{font-size:56px;color:#ff6b2c}@media print{button{display:none}}</style></head><body><button onclick="print()">Print / Save as PDF</button><h1>Heat Intelligence Report</h1><p>${escapeHtml(data.workspace.organization.name)} · generated ${new Date().toISOString()}</p><div class="risk">${observation?.riskScore ?? "—"}/100</div><p>${escapeHtml(observation?.riskLevel ?? "Awaiting data")}</p><h2>Monitored locations</h2><table><thead><tr><th>Location</th><th>Coordinates</th><th>Next assessment</th></tr></thead><tbody>${rows}</tbody></table><h2>Current evidence</h2><p>Temperature: ${observation?.temperature ?? "—"}°C · Heat index: ${observation?.heatIndex ?? "—"}°C · Humidity: ${observation?.relativeHumidity ?? "—"}%</p><p>Open incidents: ${data.openIncidents.length} · Active hotspots: ${data.hotspots.length}</p></body></html>`;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="heat-intelligence-${new Date().toISOString().slice(0, 10)}.html"`);
+    res.send(html);
+  });
   registerStorageProxy(app);
   app.use(
     "/api/trpc",
     createExpressMiddleware({ router: appRouter, createContext })
   );
+  app.use(errorTelemetry);
   return app;
 }

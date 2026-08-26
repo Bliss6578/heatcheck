@@ -12,6 +12,7 @@ import {
   Bot,
   CheckCircle2,
   Compass,
+  Download,
   Loader2,
   MapPinned,
   Play,
@@ -61,6 +62,14 @@ type MappableLocation = {
   longitude: number;
 };
 
+type MappableHotspot = {
+  id: string;
+  label: string;
+  latitude: number;
+  longitude: number;
+  temperature: number;
+};
+
 function heatColor(score: number) {
   if (score >= 40) return "#d94032";
   if (score >= 35) return "#ff6b2c";
@@ -73,11 +82,13 @@ function LocationMap({
   selectedLocation,
   onSelect,
   geojson,
+  hotspots = [],
 }: {
   locations: MappableLocation[];
   selectedLocation?: MappableLocation;
   onSelect?: (id: string) => void;
   geojson?: unknown;
+  hotspots?: MappableHotspot[];
 }) {
   const mapNode = useRef<HTMLDivElement>(null);
   const [mapMode, setMapMode] = useState<"streets" | "terrain">("streets");
@@ -119,9 +130,28 @@ function LocationMap({
         if (layer.getBounds().isValid()) map.fitBounds(layer.getBounds(), { padding: [24, 24] });
       } catch (error) { console.warn("Heatcheck could not render provider GeoJSON.", error); }
     }
+    hotspots.forEach(hotspot => {
+      const color = heatColor(hotspot.temperature);
+      L.circle([hotspot.latitude, hotspot.longitude], {
+        radius: 220,
+        color,
+        fillColor: color,
+        fillOpacity: .32,
+        weight: 2,
+      })
+        .bindTooltip(`${hotspot.label} · ${hotspot.temperature.toFixed(1)}°C`)
+        .addTo(map);
+      L.circleMarker([hotspot.latitude, hotspot.longitude], {
+        radius: 5,
+        color: "#fff",
+        fillColor: color,
+        fillOpacity: 1,
+        weight: 1,
+      }).addTo(map);
+    });
     setTimeout(() => map.invalidateSize(), 0);
     return () => { map.remove(); };
-  }, [geojson, mapMode, selectedLocation]);
+  }, [geojson, hotspots, mapMode, selectedLocation]);
 
   return (
     <div className="ops-live-map" aria-label="Monitored location map">
@@ -281,7 +311,7 @@ function Onboarding() {
 
 function OperationsContent() {
   const { getToken } = useClerkAuth();
-  const [path] = useLocation();
+  const [path, navigate] = useLocation();
   const workspace = trpc.heatcheck.workspace.current.useQuery();
   const organizationId = workspace.data?.organization.id ?? "pending-workspace";
   const [newLocationName, setNewLocationName] = useState("");
@@ -296,6 +326,7 @@ function OperationsContent() {
   const [liveEvents, setLiveEvents] = useState<Array<{ type: string; message: string; createdAt: string }>>([]);
   const [agentResult, setAgentResult] = useState<any>(null);
   const [selectedRunId, setSelectedRunId] = useState("");
+  const [reportPending, setReportPending] = useState(false);
   const dashboard = trpc.heatcheck.dashboard.get.useQuery(
     { organizationId },
     {
@@ -312,10 +343,22 @@ function OperationsContent() {
     { organizationId },
     { enabled: Boolean(workspace.data?.organization.id) }
   );
+  const routeRunId = path.startsWith("/app/agent-runs/") ? path.split("/").pop() ?? "" : "";
+  const detailRunId = routeRunId || selectedRunId;
   const agentDetail = trpc.heatcheck.agent.detail.useQuery(
-    { organizationId, runId: selectedRunId },
-    { enabled: Boolean(selectedRunId && workspace.data?.organization.id) }
+    { organizationId, runId: detailRunId },
+    { enabled: Boolean(detailRunId && workspace.data?.organization.id) }
   );
+  const downloadReport = async () => {
+    setReportPending(true);
+    try {
+      const token = await getToken();
+      const response = await fetch(`/api/reports/heat-intelligence?organizationId=${encodeURIComponent(organizationId)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!response.ok) throw new Error("Report generation failed.");
+      const blob = await response.blob(); const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a"); anchor.href = url; anchor.download = `heat-intelligence-${new Date().toISOString().slice(0, 10)}.html`; anchor.click(); URL.revokeObjectURL(url);
+    } finally { setReportPending(false); }
+  };
   const streamAgent = async () => {
     if (!selectedLocation) return;
     setAgentRunning(true); setAgentError(""); setLiveEvents([]); setAgentResult(null);
@@ -439,6 +482,9 @@ function OperationsContent() {
             {run.isPending ? <Loader2 className="animate-spin" /> : <Play />}{" "}
             Run analysis
           </Button>
+          <Button onClick={() => void downloadReport()} disabled={reportPending} size="sm" variant="outline">
+            {reportPending ? <Loader2 className="animate-spin" /> : <Download />} Report
+          </Button>
         </div>
       </header>
 
@@ -453,7 +499,15 @@ function OperationsContent() {
         </p>
       )}
 
-      {activeTab === "/app" && (
+      {routeRunId && (
+        <section className="ops-section-list ops-agent-run-page">
+          <div className="ops-section-list__head"><div><p>AGENT RUN / AUDIT RECORD</p><h2>Heat intelligence timeline</h2></div><Button variant="outline" onClick={() => navigate("/app")}>Back to overview</Button></div>
+          {agentDetail.isLoading && <div className="ops-loading"><Loader2 className="animate-spin" /> Loading agent evidence…</div>}
+          {agentDetail.data && <div className="ops-run-detail ops-run-detail--page"><div className="ops-run-summary"><strong>{displayRisk(agentDetail.data.run.riskLevel)}</strong><span>{agentDetail.data.run.riskScore ?? "—"}/100</span><span>{agentDetail.data.run.status}</span><span>{agentDetail.data.run.stepsUsed} planning steps</span></div><h3>Event timeline</h3><ol>{agentDetail.data.events.map(item => <li key={item.id}><span>{readableDate(item.createdAt)}</span><strong>{item.message}</strong></li>)}</ol><h3>Tool evidence</h3>{agentDetail.data.toolCalls.map(call => <div key={call.id}><strong>{call.toolName.replaceAll("_", " ")}</strong><span>{call.status} · {call.durationMs ?? 0} ms</span></div>)}</div>}
+        </section>
+      )}
+
+      {activeTab === "/app" && !routeRunId && (
         <section className="ops-grid">
           <article className="ops-agent-command">
             <div className="ops-agent-command__head">
@@ -600,6 +654,7 @@ function OperationsContent() {
               selectedLocation={selectedLocation}
               onSelect={setSelectedLocationId}
               geojson={heatmapGeojson}
+              hotspots={data.hotspots}
             />
             {data.hotspots.length > 0 && (
               <div className="ops-map-alerts">
@@ -794,7 +849,7 @@ function OperationsContent() {
             <div className="ops-history">
               {agentRuns.data?.length ? (
                 agentRuns.data.map(runItem => (
-                  <button type="button" className="ops-history__row" key={runItem.id} onClick={() => setSelectedRunId(runItem.id)}>
+                  <button type="button" className="ops-history__row" key={runItem.id} onClick={() => navigate(`/app/agent-runs/${runItem.id}`)}>
                     <span>
                       {readableDate(runItem.createdAt)} ·{" "}
                       {runItem.goal.replaceAll("_", " ")}
@@ -895,6 +950,7 @@ function OperationsContent() {
               selectedLocation={selectedLocation}
               onSelect={setSelectedLocationId}
               geojson={heatmapGeojson}
+              hotspots={data.hotspots}
             />
             <div className="ops-location-map-copy">
               <span>SELECTED FIELD SITE</span>
