@@ -4,9 +4,15 @@
   "outputDirectory": "public",
   "functions": {
     "api/index.ts": {
-      "maxDuration": 60
+      "maxDuration": 300
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/heatcheck-monitoring",
+      "schedule": "0 1 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",

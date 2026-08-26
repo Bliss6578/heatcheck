@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useAuth as useClerkAuth } from "@clerk/react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ import {
   ShieldAlert,
   ThermometerSun,
 } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
 const productTabs = [
@@ -58,22 +59,120 @@ type MappableLocation = {
   longitude: number;
 };
 
+let googleMapsPromise: Promise<void> | null = null;
+
+function loadGoogleMaps(apiKey: string) {
+  if (window.google?.maps) return Promise.resolve();
+  if (googleMapsPromise) return googleMapsPromise;
+  googleMapsPromise = new Promise((resolve, reject) => {
+    const callback = `initHeatcheckMap_${Date.now()}`;
+    (window as typeof window & Record<string, unknown>)[callback] = () => {
+      delete (window as typeof window & Record<string, unknown>)[callback];
+      resolve();
+    };
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&callback=${callback}&v=weekly`;
+    script.async = true;
+    script.onerror = () => reject(new Error("Google Maps could not load."));
+    document.head.appendChild(script);
+  });
+  return googleMapsPromise;
+}
+
+function heatColor(score: number) {
+  if (score >= 40) return "#d94032";
+  if (score >= 35) return "#ff6b2c";
+  if (score >= 30) return "#f5a623";
+  return "#65856b";
+}
+
 function LocationMap({
   locations,
   selectedLocation,
   onSelect,
+  geojson,
 }: {
   locations: MappableLocation[];
   selectedLocation?: MappableLocation;
   onSelect?: (id: string) => void;
+  geojson?: unknown;
 }) {
+  const mapNode = useRef<HTMLDivElement>(null);
+  const [mapMode, setMapMode] = useState<"roadmap" | "satellite" | "street">("roadmap");
+  const [mapReady, setMapReady] = useState(false);
+  const mapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
   const googleMapUrl = selectedLocation
     ? `https://maps.google.com/maps?q=${encodeURIComponent(`${selectedLocation.latitude},${selectedLocation.longitude}`)}&z=13&output=embed`
     : null;
 
+  useEffect(() => {
+    if (!mapsApiKey || !selectedLocation || !mapNode.current) return;
+    let disposed = false;
+    loadGoogleMaps(mapsApiKey)
+      .then(() => {
+        if (disposed || !mapNode.current || !selectedLocation) return;
+        const center = {
+          lat: selectedLocation.latitude,
+          lng: selectedLocation.longitude,
+        };
+        if (mapMode === "street") {
+          new google.maps.StreetViewPanorama(mapNode.current, {
+            position: center,
+            pov: { heading: 34, pitch: 4 },
+            zoom: 1,
+          });
+        } else {
+          const map = new google.maps.Map(mapNode.current, {
+            center,
+            zoom: 13,
+            mapTypeId: mapMode,
+            streetViewControl: true,
+            fullscreenControl: true,
+          });
+          new google.maps.Marker({ map, position: center, title: selectedLocation.name });
+          if (geojson && typeof geojson === "object") {
+            try {
+              const features = map.data.addGeoJson(geojson as GeoJSON.GeoJsonObject);
+              map.data.setStyle(feature => {
+                const temperature = Number(
+                  feature.getProperty("temperature") ??
+                    feature.getProperty("Temperature") ??
+                    feature.getProperty("tcm") ??
+                    0
+                );
+                return {
+                  fillColor: heatColor(temperature),
+                  fillOpacity: 0.58,
+                  strokeColor: heatColor(temperature),
+                  strokeOpacity: 0.9,
+                  strokeWeight: 1,
+                };
+              });
+              if (features.length) {
+                const bounds = new google.maps.LatLngBounds();
+                features.forEach(feature =>
+                  feature.getGeometry()?.forEachLatLng(point => bounds.extend(point))
+                );
+                if (!bounds.isEmpty()) map.fitBounds(bounds, 32);
+              }
+            } catch (error) {
+              console.warn("Heatcheck could not render provider GeoJSON.", error);
+            }
+          }
+        }
+        setMapReady(true);
+      })
+      .catch(() => setMapReady(false));
+    return () => {
+      disposed = true;
+    };
+  }, [geojson, mapMode, mapsApiKey, selectedLocation]);
+
   return (
     <div className="ops-live-map" aria-label="Monitored location map">
-      {googleMapUrl ? (
+      {mapsApiKey && selectedLocation ? (
+        <div ref={mapNode} className="ops-google-map" />
+      ) : googleMapUrl ? (
         <iframe
           key={selectedLocation?.id}
           title={`${selectedLocation?.name ?? "Selected location"} on Google Maps`}
@@ -84,6 +183,22 @@ function LocationMap({
         />
       ) : (
         <div className="ops-live-map__empty">Add a location to open Google Maps.</div>
+      )}
+      {selectedLocation && (
+        <div className="ops-map-mode-switcher">
+          {(["roadmap", "satellite", "street"] as const).map(mode => (
+            <button
+              type="button"
+              key={mode}
+              className={mapMode === mode ? "is-selected" : ""}
+              onClick={() => setMapMode(mode)}
+              disabled={!mapsApiKey && mode !== "roadmap"}
+            >
+              {mode === "roadmap" ? "Heat map" : mode}
+            </button>
+          ))}
+          {mapsApiKey && !mapReady && <span>Loading map…</span>}
+        </div>
       )}
       {locations.length > 1 && (
         <div className="ops-map-site-switcher" aria-label="Map locations">
@@ -221,6 +336,7 @@ function Onboarding() {
 }
 
 function OperationsContent() {
+  const { getToken } = useClerkAuth();
   const [path] = useLocation();
   const workspace = trpc.heatcheck.workspace.current.useQuery();
   const organizationId = workspace.data?.organization.id ?? "pending-workspace";
@@ -231,6 +347,11 @@ function OperationsContent() {
   const [agentCommand, setAgentCommand] = useState(
     "Analyze this location and explain any change."
   );
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentError, setAgentError] = useState("");
+  const [liveEvents, setLiveEvents] = useState<Array<{ type: string; message: string; createdAt: string }>>([]);
+  const [agentResult, setAgentResult] = useState<any>(null);
+  const [selectedRunId, setSelectedRunId] = useState("");
   const dashboard = trpc.heatcheck.dashboard.get.useQuery(
     { organizationId },
     {
@@ -247,12 +368,41 @@ function OperationsContent() {
     { organizationId },
     { enabled: Boolean(workspace.data?.organization.id) }
   );
-  const agentCommandMutation = trpc.heatcheck.agent.command.useMutation({
-    onSuccess: async () => {
-      await agentRuns.refetch();
-      await utils.heatcheck.dashboard.get.invalidate({ organizationId });
-    },
-  });
+  const agentDetail = trpc.heatcheck.agent.detail.useQuery(
+    { organizationId, runId: selectedRunId },
+    { enabled: Boolean(selectedRunId && workspace.data?.organization.id) }
+  );
+  const streamAgent = async () => {
+    if (!selectedLocation) return;
+    setAgentRunning(true); setAgentError(""); setLiveEvents([]); setAgentResult(null);
+    try {
+      const token = await getToken();
+      const response = await fetch("/api/agent/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ organizationId, locationId: selectedLocation.id, command: agentCommand }),
+      });
+      if (!response.ok || !response.body) throw new Error("The live agent stream could not be opened.");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder(); let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read(); buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+        const frames = buffer.split("\n\n"); buffer = frames.pop() ?? "";
+        for (const frame of frames) {
+          const eventType = frame.match(/^event: (.+)$/m)?.[1];
+          const raw = frame.match(/^data: (.+)$/m)?.[1];
+          if (!raw) continue;
+          const payload = JSON.parse(raw);
+          if (eventType === "activity") setLiveEvents(current => [...current, payload]);
+          if (eventType === "result") { setAgentResult(payload); setSelectedRunId(payload.runId); }
+          if (eventType === "failure") throw new Error(payload.message);
+        }
+        if (done) break;
+      }
+      await agentRuns.refetch(); await utils.heatcheck.dashboard.get.invalidate({ organizationId });
+    } catch (error) { setAgentError(error instanceof Error ? error.message : "Agent run failed."); }
+    finally { setAgentRunning(false); }
+  };
   const approve = trpc.heatcheck.actions.approve.useMutation({
     onSuccess: () =>
       utils.heatcheck.dashboard.get.invalidate({ organizationId }),
@@ -300,6 +450,10 @@ function OperationsContent() {
 
   const data = dashboard.data;
   const observation = data.latestObservation;
+  const heatmapGeojson =
+    observation?.summary && typeof observation.summary === "object"
+      ? (observation.summary as { geojson?: unknown }).geojson
+      : undefined;
   const activeTab = productTabs.includes(path as (typeof productTabs)[number])
     ? path
     : "/app";
@@ -365,11 +519,11 @@ function OperationsContent() {
               </div>
               <span
                 className={
-                  agentCommandMutation.isPending ? "ops-agent-live" : ""
+                  agentRunning ? "ops-agent-live" : ""
                 }
               >
                 <Bot size={17} />{" "}
-                {agentCommandMutation.isPending ? "RUNNING" : "READY"}
+                {agentRunning ? "RUNNING" : "READY"}
               </span>
             </div>
             <div
@@ -389,12 +543,7 @@ function OperationsContent() {
             <form
               onSubmit={event => {
                 event.preventDefault();
-                if (selectedLocation)
-                  agentCommandMutation.mutate({
-                    organizationId,
-                    locationId: selectedLocation.id,
-                    command: agentCommand,
-                  });
+                void streamAgent();
               }}
             >
               <Input
@@ -404,9 +553,9 @@ function OperationsContent() {
               />
               <Button
                 type="submit"
-                disabled={!selectedLocation || agentCommandMutation.isPending}
+                disabled={!selectedLocation || agentRunning}
               >
-                {agentCommandMutation.isPending ? (
+                {agentRunning ? (
                   <Loader2 className="animate-spin" />
                 ) : (
                   <Bot />
@@ -414,30 +563,26 @@ function OperationsContent() {
                 Analyze with HeatCheck Agent
               </Button>
             </form>
-            {agentCommandMutation.error && (
-              <p className="ops-form__error">
-                {agentCommandMutation.error.message}
-              </p>
-            )}
-            {agentCommandMutation.data && (
+            {agentError && <p className="ops-form__error">{agentError}</p>}
+            {liveEvents.length > 0 && <ol className="ops-live-agent-events">{liveEvents.map((item, index) => <li key={`${item.createdAt}-${index}`}><i /> <span>{item.message}</span></li>)}</ol>}
+            {agentResult && (
               <div className="ops-agent-result">
                 <div>
                   <span>RISK</span>
                   <strong>
-                    {agentCommandMutation.data.risk.score}/100 ·{" "}
-                    {agentCommandMutation.data.risk.level}
+                    {agentResult.risk.score}/100 · {agentResult.risk.level}
                   </strong>
                 </div>
                 <div>
                   <span>PLANNER</span>
                   <strong>
-                    {agentCommandMutation.data.agent.fallbackUsed
+                    {agentResult.agent.fallbackUsed
                       ? "DETERMINISTIC FALLBACK"
                       : "GROQ / QWEN"}
                   </strong>
                 </div>
                 <ol>
-                  {agentCommandMutation.data.toolCalls.map((tool, index) => (
+                  {agentResult.toolCalls.map((tool: string, index: number) => (
                     <li key={`${tool}-${index}`}>
                       ✓ {tool.replaceAll("_", " ")}
                     </li>
@@ -510,6 +655,7 @@ function OperationsContent() {
               locations={data.locations}
               selectedLocation={selectedLocation}
               onSelect={setSelectedLocationId}
+              geojson={heatmapGeojson}
             />
             {data.hotspots.length > 0 && (
               <div className="ops-map-alerts">
@@ -704,7 +850,7 @@ function OperationsContent() {
             <div className="ops-history">
               {agentRuns.data?.length ? (
                 agentRuns.data.map(runItem => (
-                  <div className="ops-history__row" key={runItem.id}>
+                  <button type="button" className="ops-history__row" key={runItem.id} onClick={() => setSelectedRunId(runItem.id)}>
                     <span>
                       {readableDate(runItem.createdAt)} ·{" "}
                       {runItem.goal.replaceAll("_", " ")}
@@ -715,7 +861,7 @@ function OperationsContent() {
                     <span className={riskClass(runItem.riskLevel)}>
                       {displayRisk(runItem.riskLevel ?? runItem.status)}
                     </span>
-                  </div>
+                  </button>
                 ))
               ) : (
                 <div className="ops-empty">
@@ -723,6 +869,7 @@ function OperationsContent() {
                 </div>
               )}
             </div>
+            {agentDetail.data && <div className="ops-run-detail"><h3>Agent run timeline</h3><p>{agentDetail.data.run.goal.replaceAll("_", " ")} · {agentDetail.data.run.status}</p><ol>{agentDetail.data.events.map(item => <li key={item.id}><span>{readableDate(item.createdAt)}</span><strong>{item.message}</strong></li>)}</ol><h4>Tool evidence</h4>{agentDetail.data.toolCalls.map(call => <div key={call.id}><strong>{call.toolName.replaceAll("_", " ")}</strong><span>{call.status} · {call.durationMs ?? 0} ms</span></div>)}</div>}
           </article>
         </section>
       )}
@@ -803,6 +950,7 @@ function OperationsContent() {
               locations={data.locations}
               selectedLocation={selectedLocation}
               onSelect={setSelectedLocationId}
+              geojson={heatmapGeojson}
             />
             <div className="ops-location-map-copy">
               <span>SELECTED FIELD SITE</span>

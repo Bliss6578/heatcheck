@@ -34,14 +34,17 @@ function event(
   state: HeatAgentState,
   type: string,
   message: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
+  onEvent?: (event: HeatAgentState["events"][number]) => void
 ) {
-  state.events.push({
+  const item = {
     type,
     message,
     metadata,
     createdAt: new Date().toISOString(),
-  });
+  };
+  state.events.push(item);
+  onEvent?.(item);
 }
 function publicLevel(level?: string) {
   return level === "SEVERE"
@@ -57,6 +60,7 @@ export async function runAutonomousAgent(input: {
   locationId: string;
   goal?: AgentGoal;
   radiusKm?: number;
+  onEvent?: (event: HeatAgentState["events"][number]) => void;
 }) {
   if (!AGENT_CONFIG.enabled)
     throw new TRPCError({
@@ -136,13 +140,15 @@ export async function runAutonomousAgent(input: {
     llmModel: AGENT_CONFIG.model,
     fallbackUsed: state.planner.fallbackUsed,
   });
-  event(state, "agent.started", "HeatCheck Agent started.");
+  event(state, "agent.started", "HeatCheck Agent started.", undefined, input.onEvent);
   event(
     state,
     "memory.loaded",
     previous
       ? "Previous location analysis loaded."
-      : "No previous analysis was available."
+      : "No previous analysis was available.",
+    undefined,
+    input.onEvent
   );
   const registry = createAgentToolRegistry();
   const planner = new HybridPlanner(new DeterministicPlanner(), llm, registry);
@@ -151,7 +157,7 @@ export async function runAutonomousAgent(input: {
     for (let step = 0; step < AGENT_CONFIG.maxSteps; step += 1) {
       state.stepNumber = step + 1;
       state.status = "PLANNING";
-      event(state, "agent.planning", `Planning step ${step + 1}.`);
+      event(state, "agent.planning", `Planning step ${step + 1}.`, undefined, input.onEvent);
       const decision = await planner.next(state);
       if (decision.type === "COMPLETE") break;
       state.status = "EXECUTING";
@@ -159,7 +165,8 @@ export async function runAutonomousAgent(input: {
         state,
         "tool.started",
         `${decision.tool.replaceAll("_", " ")} started.`,
-        { tool: decision.tool }
+        { tool: decision.tool },
+        input.onEvent
       );
       await executeRegisteredTool(
         registry,
@@ -167,6 +174,8 @@ export async function runAutonomousAgent(input: {
         decision.tool,
         decision.arguments
       );
+      const completedEvent = state.events.at(-1);
+      if (completedEvent?.type === "tool.completed") input.onEvent?.(completedEvent);
     }
     if (!state.risk)
       throw new Error(
@@ -176,23 +185,24 @@ export async function runAutonomousAgent(input: {
     if (state.risk.score >= 65)
       await executeRegisteredTool(registry, state, "create_heat_alert", {});
     await executeRegisteredTool(registry, state, "create_recommendation", {});
-    await executeRegisteredTool(
-      registry,
-      state,
-      "schedule_next_monitoring",
-      {}
-    );
+    await executeRegisteredTool(registry, state, "schedule_next_monitoring", {});
+    const scheduleEvent = state.events.at(-1);
+    if (scheduleEvent?.type === "tool.completed") input.onEvent?.(scheduleEvent);
     state.status = "SAVING";
     event(
       state,
       "memory.saved",
-      "Agent run, tools, evidence, and actions saved to long-term memory."
+      "Agent run, tools, evidence, and actions saved to long-term memory.",
+      undefined,
+      input.onEvent
     );
     state.status = "COMPLETED";
     event(
       state,
       "agent.completed",
-      `Operational risk completed at ${state.risk.score}/100.`
+      `Operational risk completed at ${state.risk.score}/100.`,
+      undefined,
+      input.onEvent
     );
     const comparison = state.observations.compare_heat_conditions as
       | Record<string, unknown>
@@ -273,7 +283,7 @@ export async function runAutonomousAgent(input: {
     return response;
   } catch (error) {
     state.status = "FAILED";
-    event(state, "agent.failed", "HeatCheck Agent did not complete.");
+    event(state, "agent.failed", "HeatCheck Agent did not complete.", undefined, input.onEvent);
     await db
       .update(autonomousAgentRuns)
       .set({

@@ -30,6 +30,7 @@ import {
 } from "./tenant.js";
 import type { AgentMode, NormalizedObservation } from "./types.js";
 import { analysisCacheKey, getCached, setCached } from "./cache.js";
+import { deliverManagedHeatAlert } from "./notifications.js";
 
 type ActionPermission = "SAFE_AUTO" | "APPROVAL_REQUIRED" | "DISABLED";
 
@@ -454,6 +455,15 @@ export async function runMonitoring(input: {
         type: "incident.opened",
         message: `Heat incident opened at the configured threshold (${location.riskThreshold}).`,
         payload: { incidentId, threshold: location.riskThreshold },
+      });
+      await deliverManagedHeatAlert({
+        organizationId: input.organizationId,
+        locationId: location.id,
+        locationName: location.name,
+        incidentId,
+        riskScore: assessment.score,
+        riskLevel: assessment.level,
+        summary: assessment.summary,
       });
     }
 
