@@ -67,32 +67,38 @@ function LocationMap({
   selectedLocation?: MappableLocation;
   onSelect?: (id: string) => void;
 }) {
+  const googleMapUrl = selectedLocation
+    ? `https://maps.google.com/maps?q=${encodeURIComponent(`${selectedLocation.latitude},${selectedLocation.longitude}`)}&z=13&output=embed`
+    : null;
+
   return (
     <div className="ops-live-map" aria-label="Monitored location map">
-      <svg viewBox="0 0 1000 500" role="img">
-        <title>Heatcheck monitored locations</title>
-        <path className="ops-map-land" d="M83 109l72-49 105 17 54 47-24 51-58 24-27 66-55 24-56-53-47-35 16-49zm264-5 62-42 92 11 29 46-23 35 44 51-30 78-54 17-34-42-34-10-17-67-48-31zm239-9 71-31 105 23 91 68-24 52-72 15-42-18-52 43-65-16-25-61zm44 198 55-28 68 26 37 57-25 54-81 15-52-47z" />
-        <path className="ops-map-grid" d="M0 100h1000M0 200h1000M0 300h1000M0 400h1000M200 0v500M400 0v500M600 0v500M800 0v500" />
-        {locations.map(location => {
-          const x = ((location.longitude + 180) / 360) * 1000;
-          const y = ((90 - location.latitude) / 180) * 500;
-          const selected = selectedLocation?.id === location.id;
-          return (
-            <g
+      {googleMapUrl ? (
+        <iframe
+          key={selectedLocation?.id}
+          title={`${selectedLocation?.name ?? "Selected location"} on Google Maps`}
+          src={googleMapUrl}
+          loading="lazy"
+          allowFullScreen
+          referrerPolicy="no-referrer-when-downgrade"
+        />
+      ) : (
+        <div className="ops-live-map__empty">Add a location to open Google Maps.</div>
+      )}
+      {locations.length > 1 && (
+        <div className="ops-map-site-switcher" aria-label="Map locations">
+          {locations.map(location => (
+            <button
+              type="button"
               key={location.id}
-              className={selected ? "ops-map-marker is-selected" : "ops-map-marker"}
-              transform={`translate(${x} ${y})`}
+              className={selectedLocation?.id === location.id ? "is-selected" : ""}
               onClick={() => onSelect?.(location.id)}
-              role="button"
-              tabIndex={0}
-              aria-label={`Select ${location.name}`}
             >
-              <circle r={selected ? 15 : 10} />
-              <circle r="4" />
-            </g>
-          );
-        })}
-      </svg>
+              {location.name}
+            </button>
+          ))}
+        </div>
+      )}
       {selectedLocation ? (
         <div className="ops-live-map__label">
           <MapPinned size={16} />
