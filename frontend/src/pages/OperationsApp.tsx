@@ -20,6 +20,7 @@ import {
   Settings2,
   ShieldAlert,
   ThermometerSun,
+  Trash2,
 } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -455,6 +456,15 @@ function OperationsContent() {
       setNewLatitude("");
       setNewLongitude("");
       setSelectedLocationId(location.id);
+      await utils.heatcheck.dashboard.get.invalidate({ organizationId });
+    },
+  });
+  const deleteLocation = trpc.heatcheck.locations.delete.useMutation({
+    onSuccess: async deleted => {
+      const nextLocation = dashboard.data?.locations.find(
+        location => location.id !== deleted.id
+      );
+      setSelectedLocationId(nextLocation?.id ?? "");
       await utils.heatcheck.dashboard.get.invalidate({ organizationId });
     },
   });
@@ -1022,6 +1032,9 @@ function OperationsContent() {
           {createLocation.error && (
             <p className="ops-form__error">{createLocation.error.message}</p>
           )}
+          {deleteLocation.error && (
+            <p className="ops-form__error">{deleteLocation.error.message}</p>
+          )}
           <div className="ops-location-map-layout">
             <LocationMap
               locations={data.locations}
@@ -1066,6 +1079,35 @@ function OperationsContent() {
               <div>
                 <span>Next assessment</span>
                 <strong>{readableDate(location.nextAnalysisAt)}</strong>
+              </div>
+              <div className="ops-location__actions">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  disabled={deleteLocation.isPending}
+                  onClick={event => {
+                    event.stopPropagation();
+                    if (
+                      !window.confirm(
+                        `Delete ${location.name} and all of its heat analysis history? This cannot be undone.`
+                      )
+                    )
+                      return;
+                    deleteLocation.mutate({
+                      organizationId,
+                      locationId: location.id,
+                    });
+                  }}
+                >
+                  {deleteLocation.isPending &&
+                  deleteLocation.variables?.locationId === location.id ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <Trash2 />
+                  )}
+                  Delete
+                </Button>
               </div>
             </article>
           ))}

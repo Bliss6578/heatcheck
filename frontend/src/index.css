@@ -246,3 +246,6 @@ h1, h2, h3, p { margin-top: 0; }
 .ops-live-map .leaflet-popup-content { color: var(--basalt); }
 .ops-settings__grid > form { display: grid; align-content: start; gap: .65rem; min-height: 165px; padding: 1rem; border: 1px solid var(--line); background: var(--paper); }
 .ops-settings__grid > form label { margin-top: .25rem; color: var(--ink-soft); font-family: "DM Mono", monospace; font-size: .55rem; letter-spacing: .05em; text-transform: uppercase; }
+.ops-location { grid-template-columns: minmax(0, 1.4fr) .4fr .6fr auto; }
+.ops-location__actions { display: flex !important; justify-content: flex-end; }
+@media (max-width: 720px) { .ops-location { grid-template-columns: 1fr; }.ops-location__actions { justify-content: flex-start; } }

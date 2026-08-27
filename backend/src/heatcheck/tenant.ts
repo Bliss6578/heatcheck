@@ -1,11 +1,25 @@
 import { TRPCError } from "@trpc/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
+  activityEvents,
+  agentActions,
+  agentDecisions,
+  agentRuns,
+  assets,
   auditLogs,
+  autonomousAgentEvents,
+  autonomousAgentRuns,
+  autonomousAgentToolCalls,
+  fortyguardJobs,
+  heatObservations,
+  hotspots,
+  incidents,
   locations,
+  monitoringRuns,
   organizationMembers,
   organizations,
+  workers,
   type Location,
   type Organization,
 } from "../../drizzle/schema.js";
@@ -173,6 +187,90 @@ export async function listLocationsForWorkspace(userId: number, organizationId: 
   await requireWorkspaceMember(userId, organizationId);
   const db = await requireDb();
   return db.select().from(locations).where(eq(locations.organizationId, organizationId));
+}
+
+export async function deleteLocation(input: {
+  userId: number;
+  organizationId: string;
+  locationId: string;
+}) {
+  const workspace = await requireWorkspaceMember(input.userId, input.organizationId);
+  requireOperatorRole(workspace.role);
+  const location = await requireLocationMember(
+    input.userId,
+    input.organizationId,
+    input.locationId
+  );
+  const db = await requireDb();
+
+  await db.transaction(async tx => {
+    const operationalRuns = await tx
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.locationId, location.id));
+    const operationalRunIds = operationalRuns.map(run => run.id);
+    if (operationalRunIds.length) {
+      await tx
+        .delete(agentActions)
+        .where(inArray(agentActions.agentRunId, operationalRunIds));
+      await tx
+        .delete(agentDecisions)
+        .where(inArray(agentDecisions.agentRunId, operationalRunIds));
+    }
+
+    const autonomousRuns = await tx
+      .select({ id: autonomousAgentRuns.id })
+      .from(autonomousAgentRuns)
+      .where(eq(autonomousAgentRuns.locationId, location.id));
+    const autonomousRunIds = autonomousRuns.map(run => run.id);
+    if (autonomousRunIds.length) {
+      await tx
+        .delete(autonomousAgentEvents)
+        .where(inArray(autonomousAgentEvents.runId, autonomousRunIds));
+      await tx
+        .delete(autonomousAgentToolCalls)
+        .where(inArray(autonomousAgentToolCalls.runId, autonomousRunIds));
+    }
+
+    await tx.delete(agentRuns).where(eq(agentRuns.locationId, location.id));
+    await tx
+      .delete(autonomousAgentRuns)
+      .where(eq(autonomousAgentRuns.locationId, location.id));
+    await tx.delete(hotspots).where(eq(hotspots.locationId, location.id));
+    await tx.delete(incidents).where(eq(incidents.locationId, location.id));
+    await tx
+      .delete(heatObservations)
+      .where(eq(heatObservations.locationId, location.id));
+    await tx
+      .delete(fortyguardJobs)
+      .where(eq(fortyguardJobs.locationId, location.id));
+    await tx
+      .delete(activityEvents)
+      .where(eq(activityEvents.locationId, location.id));
+    await tx
+      .delete(monitoringRuns)
+      .where(eq(monitoringRuns.locationId, location.id));
+    await tx.delete(workers).where(eq(workers.locationId, location.id));
+    await tx.delete(assets).where(eq(assets.locationId, location.id));
+    await tx
+      .delete(locations)
+      .where(
+        and(
+          eq(locations.id, location.id),
+          eq(locations.organizationId, input.organizationId)
+        )
+      );
+  });
+
+  await writeAuditLog({
+    organizationId: input.organizationId,
+    userId: input.userId,
+    eventType: "location.deleted",
+    entityType: "location",
+    entityId: location.id,
+    metadata: { name: location.name },
+  });
+  return { id: location.id, name: location.name };
 }
 
 export async function requireLocationMember(userId: number, organizationId: string, locationId: string): Promise<Location> {

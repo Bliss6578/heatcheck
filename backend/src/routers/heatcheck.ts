@@ -9,6 +9,7 @@ import {
 import {
   createLocation,
   createWorkspace,
+  deleteLocation,
   getWorkspaceForUser,
   listLocationsForWorkspace,
   requireLocationMember,
@@ -246,6 +247,16 @@ export const heatcheckRouter = router({
       .mutation(async ({ ctx, input }) => {
         return createLocation({ userId: ctx.user.id, ...input });
       }),
+    delete: protectedProcedure
+      .input(
+        z.object({
+          organizationId: z.string().min(8).max(36),
+          locationId: z.string().min(8).max(36),
+        })
+      )
+      .mutation(({ ctx, input }) =>
+        deleteLocation({ userId: ctx.user.id, ...input })
+      ),
     updateMonitoring: protectedProcedure
       .input(
         z.object({
