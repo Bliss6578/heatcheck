@@ -173,13 +173,8 @@ function LocationMap({
   }, [geojson, hotspots, mapMode, selectedLocation]);
 
   return (
-    <div className="ops-live-map" aria-label="Monitored location map">
-      {selectedLocation ? (
-        <div ref={mapNode} className="ops-google-map" />
-      ) : (
-        <div className="ops-live-map__empty">Add a location to open the interactive map.</div>
-      )}
-      {selectedLocation && (
+    <div className="ops-map-widget">
+      <div className="ops-map-toolbar">
         <div className="ops-map-mode-switcher" aria-label="Map display mode">
           <span>Map layers</span>
           {(["heat", "street", "satellite", "terrain"] as const).map(mode => (
@@ -194,34 +189,41 @@ function LocationMap({
             </button>
           ))}
         </div>
-      )}
-      {locations.length > 1 && (
-        <div className="ops-map-site-switcher" aria-label="Map locations">
-          {locations.map(location => (
-            <button
-              type="button"
-              key={location.id}
-              className={selectedLocation?.id === location.id ? "is-selected" : ""}
-              onClick={() => onSelect?.(location.id)}
-            >
-              {location.name}
-            </button>
-          ))}
-        </div>
-      )}
-      {selectedLocation ? (
-        <div className="ops-live-map__label">
-          <MapPinned size={16} />
-          <span>
-            {selectedLocation.name}
-            <small>
-              {selectedLocation.latitude.toFixed(4)}°, {selectedLocation.longitude.toFixed(4)}°
-            </small>
-          </span>
-        </div>
-      ) : (
-        <div className="ops-live-map__label">Add a location to begin monitoring.</div>
-      )}
+        {locations.length > 1 && (
+          <div className="ops-map-site-switcher" aria-label="Map locations">
+            {locations.map(location => (
+              <button
+                type="button"
+                key={location.id}
+                className={selectedLocation?.id === location.id ? "is-selected" : ""}
+                onClick={() => onSelect?.(location.id)}
+              >
+                {location.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="ops-live-map" aria-label="Monitored location map">
+        {selectedLocation ? (
+          <div ref={mapNode} className="ops-google-map" />
+        ) : (
+          <div className="ops-live-map__empty">Add a location to open the interactive map.</div>
+        )}
+        {selectedLocation ? (
+          <div className="ops-live-map__label">
+            <MapPinned size={16} />
+            <span>
+              {selectedLocation.name}
+              <small>
+                {selectedLocation.latitude.toFixed(4)}°, {selectedLocation.longitude.toFixed(4)}°
+              </small>
+            </span>
+          </div>
+        ) : (
+          <div className="ops-live-map__label">Add a location to begin monitoring.</div>
+        )}
+      </div>
     </div>
   );
 }
