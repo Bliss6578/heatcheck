@@ -181,6 +181,7 @@ function LocationMap({
       )}
       {selectedLocation && (
         <div className="ops-map-mode-switcher" aria-label="Map display mode">
+          <span>Map layers</span>
           {(["heat", "street", "satellite", "terrain"] as const).map(mode => (
             <button
               type="button"
