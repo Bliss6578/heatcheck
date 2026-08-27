@@ -14,6 +14,7 @@ import {
   requireLocationMember,
   requireWorkspaceMember,
   updateWorkspaceSettings,
+  updateWorkspacePolicies,
   updateLocationMonitoring,
   writeAuditLog,
 } from "../heatcheck/tenant.js";
@@ -23,7 +24,9 @@ import {
   runMonitoring,
 } from "../heatcheck/monitoring.js";
 import { AGENT_CONFIG } from "../agent/config.js";
+import { enqueueAutonomousAgentRun } from "../agent/queue.js";
 import {
+  cancelAutonomousAgentRun,
   getAutonomousAgentRun,
   listAutonomousAgentRuns,
   runAutonomousAgent,
@@ -108,11 +111,15 @@ export const heatcheckRouter = router({
             ])
             .default("ANALYZE_LOCATION"),
           radiusKm: z.number().min(0.1).max(10).default(1),
+          idempotencyKey: z.string().trim().min(8).max(100).optional(),
         })
       )
       .mutation(({ ctx, input }) =>
         runAutonomousAgent({ userId: ctx.user.id, ...input })
       ),
+    enqueue: heatAnalysisProcedure
+      .input(z.object({ organizationId: z.string().min(8).max(36), locationId: z.string().min(8).max(36), goal: z.enum(["ANALYZE_LOCATION", "MONITOR_LOCATION", "DETECT_HOTSPOTS", "TRACK_HEAT_CHANGE", "ASSESS_EVENT_HEAT_RISK"]).default("ANALYZE_LOCATION"), idempotencyKey: z.string().trim().min(8).max(100).optional() }))
+      .mutation(({ ctx, input }) => enqueueAutonomousAgentRun({ userId: ctx.user.id, ...input })),
     command: heatAnalysisProcedure
       .input(
         z.object({
@@ -153,6 +160,9 @@ export const heatcheckRouter = router({
       .query(({ ctx, input }) =>
         getAutonomousAgentRun(ctx.user.id, input.organizationId, input.runId)
       ),
+    cancel: protectedProcedure
+      .input(z.object({ organizationId: z.string().min(8).max(36), runId: z.string().min(8).max(36) }))
+      .mutation(({ ctx, input }) => cancelAutonomousAgentRun(ctx.user.id, input.organizationId, input.runId)),
   }),
   workspace: router({
     current: protectedProcedure.query(async ({ ctx }) => {
@@ -194,6 +204,9 @@ export const heatcheckRouter = router({
         await updateWorkspaceSettings({ userId: ctx.user.id, ...input });
         return { success: true } as const;
       }),
+    updatePolicies: protectedProcedure
+      .input(z.object({ organizationId: z.string().min(8).max(36), notificationPolicy: z.object({ enabledChannels: z.array(z.enum(["WEBHOOK", "SLACK", "EMAIL", "SMS"])).max(4).optional(), emailTo: z.string().email().max(320).optional(), smsTo: z.string().min(7).max(32).optional(), minimumRiskScore: z.number().int().min(0).max(100).optional(), quietHoursUtc: z.object({ start: z.number().int().min(0).max(23), end: z.number().int().min(0).max(23) }).optional() }).optional(), providerPolicy: z.object({ dailyCallLimit: z.number().int().min(1).max(10_000).optional() }).optional() }))
+      .mutation(async ({ ctx, input }) => { await updateWorkspacePolicies({ userId: ctx.user.id, ...input }); return { success: true } as const; }),
   }),
   locations: router({
     list: protectedProcedure

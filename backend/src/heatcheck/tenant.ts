@@ -231,3 +231,9 @@ export async function updateWorkspaceSettings(input: {
     metadata: { agentMode: input.agentMode },
   });
 }
+
+export async function updateWorkspacePolicies(input: { userId: number; organizationId: string; notificationPolicy?: Record<string, unknown>; providerPolicy?: Record<string, unknown> }) {
+  const workspace = await requireWorkspaceMember(input.userId, input.organizationId); requireAdministratorRole(workspace.role); const db = await requireDb();
+  await db.update(organizations).set({ ...(input.notificationPolicy ? { notificationPolicy: input.notificationPolicy } : {}), ...(input.providerPolicy ? { providerPolicy: input.providerPolicy } : {}) }).where(eq(organizations.id, input.organizationId));
+  await writeAuditLog({ organizationId: input.organizationId, userId: input.userId, eventType: "organization.policies_updated", entityType: "organization", entityId: input.organizationId, metadata: { notificationPolicyUpdated: Boolean(input.notificationPolicy), providerPolicyUpdated: Boolean(input.providerPolicy) } });
+}

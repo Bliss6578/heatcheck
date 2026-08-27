@@ -322,11 +322,16 @@ function OperationsContent() {
     "Analyze this location and explain any change."
   );
   const [agentRunning, setAgentRunning] = useState(false);
+  const [activeRunId, setActiveRunId] = useState("");
   const [agentError, setAgentError] = useState("");
   const [liveEvents, setLiveEvents] = useState<Array<{ type: string; message: string; createdAt: string }>>([]);
   const [agentResult, setAgentResult] = useState<any>(null);
   const [selectedRunId, setSelectedRunId] = useState("");
   const [reportPending, setReportPending] = useState(false);
+  const [alertEmail, setAlertEmail] = useState("");
+  const [alertSms, setAlertSms] = useState("");
+  const [notificationThreshold, setNotificationThreshold] = useState("65");
+  const [providerDailyLimit, setProviderDailyLimit] = useState("500");
   const dashboard = trpc.heatcheck.dashboard.get.useQuery(
     { organizationId },
     {
@@ -362,11 +367,12 @@ function OperationsContent() {
   const streamAgent = async () => {
     if (!selectedLocation) return;
     setAgentRunning(true); setAgentError(""); setLiveEvents([]); setAgentResult(null);
+    let currentRunId = "";
     try {
       const token = await getToken();
       const response = await fetch("/api/agent/stream", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ organizationId, locationId: selectedLocation.id, command: agentCommand }),
       });
       if (!response.ok || !response.body) throw new Error("The live agent stream could not be opened.");
@@ -380,15 +386,28 @@ function OperationsContent() {
           const raw = frame.match(/^data: (.+)$/m)?.[1];
           if (!raw) continue;
           const payload = JSON.parse(raw);
-          if (eventType === "activity") setLiveEvents(current => [...current, payload]);
+          if (eventType === "activity") { setLiveEvents(current => [...current, payload]); if (payload.type === "agent.started" && payload.metadata?.runId) { currentRunId = payload.metadata.runId; setActiveRunId(currentRunId); } }
           if (eventType === "result") { setAgentResult(payload); setSelectedRunId(payload.runId); }
           if (eventType === "failure") throw new Error(payload.message);
         }
         if (done) break;
       }
       await agentRuns.refetch(); await utils.heatcheck.dashboard.get.invalidate({ organizationId });
-    } catch (error) { setAgentError(error instanceof Error ? error.message : "Agent run failed."); }
-    finally { setAgentRunning(false); }
+    } catch (error) {
+      if (currentRunId) {
+        try { const token = await getToken(); const replay = await fetch(`/api/agent/runs/${currentRunId}/events?organizationId=${encodeURIComponent(organizationId)}&after=${liveEvents.length}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} }); if (replay.ok) { const snapshot = await replay.json(); setLiveEvents(current => [...current, ...snapshot.events]); if (snapshot.run?.result) setAgentResult(snapshot.run.result); } } catch { /* retain the original stream error */ }
+      }
+      setAgentError(error instanceof Error ? error.message : "Agent run failed.");
+    }
+    finally { setAgentRunning(false); setActiveRunId(""); }
+  };
+  const cancelAgent = async () => {
+    if (!activeRunId) return; const token = await getToken();
+    await fetch(`/api/agent/runs/${activeRunId}/cancel`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ organizationId }) });
+  };
+  const downloadAgentReport = async (runId: string) => {
+    const token = await getToken(); const response = await fetch(`/api/agent/runs/${runId}/report?organizationId=${encodeURIComponent(organizationId)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!response.ok) throw new Error("Agent report generation failed."); const blob = await response.blob(); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `heatcheck-agent-${runId}.html`; anchor.click(); URL.revokeObjectURL(url);
   };
   const approve = trpc.heatcheck.actions.approve.useMutation({
     onSuccess: () =>
@@ -398,6 +417,11 @@ function OperationsContent() {
     onSuccess: () =>
       utils.heatcheck.dashboard.get.invalidate({ organizationId }),
   });
+  const updatePolicies = trpc.heatcheck.workspace.updatePolicies.useMutation({ onSuccess: () => utils.heatcheck.dashboard.get.invalidate({ organizationId }) });
+  useEffect(() => {
+    const organization = dashboard.data?.workspace.organization as any; if (!organization) return;
+    setAlertEmail(organization.notificationPolicy?.emailTo ?? ""); setAlertSms(organization.notificationPolicy?.smsTo ?? ""); setNotificationThreshold(String(organization.notificationPolicy?.minimumRiskScore ?? 65)); setProviderDailyLimit(String(organization.providerPolicy?.dailyCallLimit ?? 500));
+  }, [dashboard.data?.workspace.organization]);
   const createLocation = trpc.heatcheck.locations.create.useMutation({
     onSuccess: async () => {
       setNewLocationName("");
@@ -503,7 +527,7 @@ function OperationsContent() {
         <section className="ops-section-list ops-agent-run-page">
           <div className="ops-section-list__head"><div><p>AGENT RUN / AUDIT RECORD</p><h2>Heat intelligence timeline</h2></div><Button variant="outline" onClick={() => navigate("/app")}>Back to overview</Button></div>
           {agentDetail.isLoading && <div className="ops-loading"><Loader2 className="animate-spin" /> Loading agent evidence…</div>}
-          {agentDetail.data && <div className="ops-run-detail ops-run-detail--page"><div className="ops-run-summary"><strong>{displayRisk(agentDetail.data.run.riskLevel)}</strong><span>{agentDetail.data.run.riskScore ?? "—"}/100</span><span>{agentDetail.data.run.status}</span><span>{agentDetail.data.run.stepsUsed} planning steps</span></div><h3>Event timeline</h3><ol>{agentDetail.data.events.map(item => <li key={item.id}><span>{readableDate(item.createdAt)}</span><strong>{item.message}</strong></li>)}</ol><h3>Tool evidence</h3>{agentDetail.data.toolCalls.map(call => <div key={call.id}><strong>{call.toolName.replaceAll("_", " ")}</strong><span>{call.status} · {call.durationMs ?? 0} ms</span></div>)}</div>}
+          {agentDetail.data && <div className="ops-run-detail ops-run-detail--page"><div className="ops-run-summary"><strong>{displayRisk(agentDetail.data.run.riskLevel)}</strong><span>{agentDetail.data.run.riskScore ?? "—"}/100</span><span>{agentDetail.data.run.status}</span><span>{agentDetail.data.run.stepsUsed} planning steps</span><Button variant="outline" onClick={() => void downloadAgentReport(agentDetail.data.run.id)}><Download /> Download run report</Button></div><h3>Event timeline</h3><ol>{agentDetail.data.events.map(item => <li key={item.id}><span>{readableDate(item.createdAt)}</span><strong>{item.message}</strong></li>)}</ol><h3>Tool evidence</h3>{agentDetail.data.toolCalls.map(call => <div key={call.id}><strong>{call.toolName.replaceAll("_", " ")}</strong><span>{call.status} · {call.durationMs ?? 0} ms</span></div>)}</div>}
         </section>
       )}
 
@@ -560,6 +584,7 @@ function OperationsContent() {
                 )}{" "}
                 Analyze with HeatCheck Agent
               </Button>
+              {agentRunning && activeRunId && <Button type="button" variant="outline" onClick={() => void cancelAgent()}>Cancel run</Button>}
             </form>
             {agentError && <p className="ops-form__error">{agentError}</p>}
             {liveEvents.length > 0 && <ol className="ops-live-agent-events">{liveEvents.map((item, index) => <li key={`${item.createdAt}-${index}`}><i /> <span>{item.message}</span></li>)}</ol>}
@@ -1135,6 +1160,15 @@ function OperationsContent() {
                 workspace schedule and records alerts and agent decisions.
               </small>
             </div>
+            <form onSubmit={event => { event.preventDefault(); updatePolicies.mutate({ organizationId, notificationPolicy: { enabledChannels: ["WEBHOOK", "SLACK", "EMAIL", "SMS"], ...(alertEmail ? { emailTo: alertEmail } : {}), ...(alertSms ? { smsTo: alertSms } : {}), minimumRiskScore: Number(notificationThreshold) }, providerPolicy: { dailyCallLimit: Number(providerDailyLimit) } }); }}>
+              <span>Managed alert routing</span>
+              <Label htmlFor="alert-email">Alert email</Label><Input id="alert-email" type="email" value={alertEmail} onChange={event => setAlertEmail(event.target.value)} placeholder="operations@example.com" />
+              <Label htmlFor="alert-sms">Alert SMS</Label><Input id="alert-sms" value={alertSms} onChange={event => setAlertSms(event.target.value)} placeholder="+15551234567" />
+              <Label htmlFor="alert-threshold">Minimum alert score</Label><Input id="alert-threshold" type="number" min="0" max="100" value={notificationThreshold} onChange={event => setNotificationThreshold(event.target.value)} />
+              <Label htmlFor="provider-budget">Daily provider-call budget</Label><Input id="provider-budget" type="number" min="1" max="10000" value={providerDailyLimit} onChange={event => setProviderDailyLimit(event.target.value)} />
+              <Button type="submit" disabled={updatePolicies.isPending}>{updatePolicies.isPending ? <Loader2 className="animate-spin" /> : <Settings2 />} Save operating policies</Button>
+              {updatePolicies.error && <small className="ops-form__error">{updatePolicies.error.message}</small>}
+            </form>
           </div>
         </section>
       )}

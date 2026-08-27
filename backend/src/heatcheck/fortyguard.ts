@@ -76,25 +76,20 @@ export class FortyGuardClient {
         "AUTHENTICATION",
         "FortyGuard is not configured."
       );
-    let response: Response;
-    try {
-      response = await fetch(`${FORTYGUARD_BASE_URL}${path}`, {
-        ...init,
-        headers: {
-          "api-key": this.apiKey,
-          "Content-Type": "application/json",
-          ...(init.headers ?? {}),
-        },
-        signal: AbortSignal.timeout(25_000),
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "TimeoutError")
-        throw new FortyGuardError(
-          "TIMEOUT",
-          "FortyGuard did not respond within the request timeout."
-        );
-      throw new FortyGuardError("UPSTREAM", "FortyGuard could not be reached.");
+    let response: Response | undefined;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        response = await fetch(`${FORTYGUARD_BASE_URL}${path}`, { ...init, headers: { "api-key": this.apiKey, "Content-Type": "application/json", ...(init.headers ?? {}) }, signal: AbortSignal.timeout(25_000) });
+      } catch (error) {
+        if (attempt < 2) { await new Promise(resolve => setTimeout(resolve, process.env.NODE_ENV === "test" ? 0 : 250 * 2 ** attempt)); continue; }
+        if (error instanceof DOMException && error.name === "TimeoutError") throw new FortyGuardError("TIMEOUT", "FortyGuard did not respond within the request timeout.");
+        throw new FortyGuardError("UPSTREAM", "FortyGuard could not be reached.");
+      }
+      if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 2) break;
+      const retryAfter = Number(response.headers.get("retry-after") ?? 0);
+      await new Promise(resolve => setTimeout(resolve, process.env.NODE_ENV === "test" ? 0 : Math.max(retryAfter * 1000, 250 * 2 ** attempt)));
     }
+    if (!response) throw new FortyGuardError("UPSTREAM", "FortyGuard could not be reached.");
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       const code =

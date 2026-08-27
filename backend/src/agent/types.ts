@@ -16,6 +16,7 @@ export type AgentStatus =
   | "ACTING"
   | "SAVING"
   | "COMPLETED"
+  | "CANCELLED"
   | "FAILED";
 export type ToolRisk = "SAFE" | "CONTROLLED" | "REQUIRES_APPROVAL";
 export type PlannerDecision =
@@ -80,6 +81,14 @@ export type HeatAgentState = {
     fallbackUsed: boolean;
   };
   createdAt: string;
+  durable: {
+    monitoringRunId?: string;
+    observationId?: string;
+    operationalAgentRunId?: string;
+    decisionId?: string;
+    incidentId?: string;
+    report?: Record<string, unknown>;
+  };
 };
 
 export type ToolExecutionContext = {

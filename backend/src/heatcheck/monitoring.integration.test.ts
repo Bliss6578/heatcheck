@@ -57,14 +57,14 @@ describe("Heatcheck monitoring workflow integration", () => {
     expect(inserted.filter((entry) => !Array.isArray(entry) && typeof entry === "object" && entry !== null && "source" in entry)).toHaveLength(1);
   });
 
-  it("records approval without claiming that an unconfigured external execution was verified", async () => {
+  it("records approval and reports when its operational run context is unavailable", async () => {
     const { db } = createDb([[{ id: "action-001", organizationId: "org-001", agentRunId: "run-001", status: "AWAITING_APPROVAL", actionType: "DRAFT_HEAT_ALERT" }]]);
     dbMocks.getDb.mockResolvedValue(db);
     tenantMocks.requireWorkspaceMember.mockResolvedValue({ organization: { id: "org-001" }, role: "OWNER" });
 
     const result = await approveAction({ userId: 7, organizationId: "org-001", actionId: "action-001" });
 
-    expect(result).toMatchObject({ success: true, verification: { verified: false, reason: "external_execution_not_configured" } });
+    expect(result).toMatchObject({ success: true, verification: { verified: false, reason: "missing_operational_run" } });
     expect(tenantMocks.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({ eventType: "agent_action.approved", entityId: "action-001" }));
   });
 

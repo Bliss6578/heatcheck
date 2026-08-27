@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { runDueMonitoring } from "./heatcheck/monitoring.js";
+import { processQueuedAgentRuns } from "./agent/queue.js";
 
 export function registerScheduledMonitoring(app: Express) {
   app.get("/api/cron/heatcheck-monitoring", async (req: Request, res: Response) => {
@@ -9,8 +10,8 @@ export function registerScheduledMonitoring(app: Express) {
       if (!cronSecret || authorization !== `Bearer ${cronSecret}`) {
         return res.status(403).json({ error: "cron-only" });
       }
-      const result = await runDueMonitoring();
-      return res.json({ ok: true, ...result });
+      const [result, agentQueue] = await Promise.all([runDueMonitoring(), processQueuedAgentRuns()]);
+      return res.json({ ok: true, ...result, agentQueue });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown scheduled monitoring error";
       console.error("[ScheduledMonitoring] failed:", error);

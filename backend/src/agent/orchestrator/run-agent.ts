@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   autonomousAgentEvents,
@@ -30,7 +30,7 @@ async function requireDb() {
     });
   return db;
 }
-function event(
+async function event(
   state: HeatAgentState,
   type: string,
   message: string,
@@ -45,6 +45,9 @@ function event(
   };
   state.events.push(item);
   onEvent?.(item);
+  const sequence = state.events.length;
+  const db = await getDb();
+  if (db) await db.insert(autonomousAgentEvents).values({ id: nanoid(), runId: state.runId, organizationId: state.organizationId, type: item.type, message: item.message, metadata: item.metadata ?? null, createdAt: new Date(item.createdAt), sequence });
 }
 function publicLevel(level?: string) {
   return level === "SEVERE"
@@ -61,6 +64,8 @@ export async function runAutonomousAgent(input: {
   goal?: AgentGoal;
   radiusKm?: number;
   onEvent?: (event: HeatAgentState["events"][number]) => void;
+  runId?: string;
+  idempotencyKey?: string;
 }) {
   if (!AGENT_CONFIG.enabled)
     throw new TRPCError({
@@ -78,6 +83,11 @@ export async function runAutonomousAgent(input: {
     input.locationId
   );
   const db = await requireDb();
+  if (input.idempotencyKey) {
+    const prior = (await db.select().from(autonomousAgentRuns).where(and(eq(autonomousAgentRuns.organizationId, input.organizationId), eq(autonomousAgentRuns.idempotencyKey, input.idempotencyKey))).limit(1))[0];
+    if (prior?.result) return prior.result;
+    if (prior && prior.status !== "FAILED" && prior.status !== "CANCELLED") throw new TRPCError({ code: "CONFLICT", message: "An equivalent agent run is already active." });
+  }
   const previous = (
     await db
       .select()
@@ -94,7 +104,7 @@ export async function runAutonomousAgent(input: {
     : [];
   const llm = process.env.GROQ_API_KEY ? new GroqAgentLLM() : null;
   const state: HeatAgentState = {
-    runId: nanoid(),
+    runId: input.runId ?? nanoid(),
     userId: input.userId,
     organizationId: input.organizationId,
     locationId: location.id,
@@ -127,8 +137,9 @@ export async function runAutonomousAgent(input: {
       fallbackUsed: !llm,
     },
     createdAt: new Date().toISOString(),
+    durable: {},
   };
-  await db.insert(autonomousAgentRuns).values({
+  if (!input.runId) await db.insert(autonomousAgentRuns).values({
     id: state.runId,
     organizationId: input.organizationId,
     userId: input.userId,
@@ -139,9 +150,12 @@ export async function runAutonomousAgent(input: {
     llmProvider: "groq",
     llmModel: AGENT_CONFIG.model,
     fallbackUsed: state.planner.fallbackUsed,
+    idempotencyKey: input.idempotencyKey ?? null,
+    lastHeartbeatAt: new Date(),
   });
-  event(state, "agent.started", "HeatCheck Agent started.", undefined, input.onEvent);
-  event(
+  else await db.update(autonomousAgentRuns).set({ status: "INITIALIZING", cancelRequested: false, lastHeartbeatAt: new Date() }).where(eq(autonomousAgentRuns.id, state.runId));
+  await event(state, "agent.started", "HeatCheck Agent started.", { runId: state.runId, goal: state.goal }, input.onEvent);
+  await event(
     state,
     "memory.loaded",
     previous
@@ -152,44 +166,59 @@ export async function runAutonomousAgent(input: {
   );
   const registry = createAgentToolRegistry();
   const planner = new HybridPlanner(new DeterministicPlanner(), llm, registry);
+  let persistedToolCalls = 0;
+  const persistToolCalls = async () => {
+    const pending = state.toolCalls.slice(persistedToolCalls);
+    if (pending.length) await db.insert(autonomousAgentToolCalls).values(pending.map(call => ({ id: nanoid(), runId: state.runId, organizationId: input.organizationId, toolName: call.tool, status: call.status, durationMs: call.durationMs, inputJson: call.input, outputSummary: call.outputSummary, createdAt: new Date(call.createdAt) })));
+    persistedToolCalls = state.toolCalls.length;
+  };
+  const execute = async (name: string, args: unknown) => {
+    const current = (await db.select({ cancelRequested: autonomousAgentRuns.cancelRequested }).from(autonomousAgentRuns).where(eq(autonomousAgentRuns.id, state.runId)).limit(1))[0];
+    if (current?.cancelRequested) { state.status = "CANCELLED"; throw new TRPCError({ code: "CLIENT_CLOSED_REQUEST", message: "Agent run cancelled." }); }
+    const beforeEvents = state.events.length;
+    try { return await executeRegisteredTool(registry, state, name, args); }
+    finally {
+      const directEvents = state.events.slice(beforeEvents);
+      if (directEvents.length) await db.insert(autonomousAgentEvents).values(directEvents.map((item, index) => ({ id: nanoid(), runId: state.runId, organizationId: state.organizationId, type: item.type, message: item.message, metadata: item.metadata ?? null, createdAt: new Date(item.createdAt), sequence: beforeEvents + index + 1 })));
+      directEvents.forEach(item => input.onEvent?.(item));
+      await persistToolCalls(); await db.update(autonomousAgentRuns).set({ lastHeartbeatAt: new Date(), stepsUsed: state.stepNumber, toolCallsUsed: state.toolCalls.length }).where(eq(autonomousAgentRuns.id, state.runId));
+    }
+  };
   try {
     state.status = "OBSERVING";
     for (let step = 0; step < AGENT_CONFIG.maxSteps; step += 1) {
       state.stepNumber = step + 1;
       state.status = "PLANNING";
-      event(state, "agent.planning", `Planning step ${step + 1}.`, undefined, input.onEvent);
+      await db.update(autonomousAgentRuns).set({ status: state.status, lastHeartbeatAt: new Date() }).where(eq(autonomousAgentRuns.id, state.runId));
+      await event(state, "agent.planning", `Planning step ${step + 1}.`, undefined, input.onEvent);
       const decision = await planner.next(state);
       if (decision.type === "COMPLETE") break;
       state.status = "EXECUTING";
-      event(
+      await db.update(autonomousAgentRuns).set({ status: state.status, lastHeartbeatAt: new Date() }).where(eq(autonomousAgentRuns.id, state.runId));
+      await event(
         state,
         "tool.started",
         `${decision.tool.replaceAll("_", " ")} started.`,
         { tool: decision.tool },
         input.onEvent
       );
-      await executeRegisteredTool(
-        registry,
-        state,
-        decision.tool,
-        decision.arguments
-      );
-      const completedEvent = state.events.at(-1);
-      if (completedEvent?.type === "tool.completed") input.onEvent?.(completedEvent);
+      await execute(decision.tool, decision.arguments);
     }
     if (!state.risk)
       throw new Error(
         "The agent reached its step limit before calculating risk."
       );
     state.status = "ACTING";
+    await db.update(autonomousAgentRuns).set({ status: state.status, lastHeartbeatAt: new Date() }).where(eq(autonomousAgentRuns.id, state.runId));
+    await execute("save_heat_analysis", {});
     if (state.risk.score >= 65)
-      await executeRegisteredTool(registry, state, "create_heat_alert", {});
-    await executeRegisteredTool(registry, state, "create_recommendation", {});
-    await executeRegisteredTool(registry, state, "schedule_next_monitoring", {});
-    const scheduleEvent = state.events.at(-1);
-    if (scheduleEvent?.type === "tool.completed") input.onEvent?.(scheduleEvent);
+      await execute("create_heat_alert", {});
+    await execute("create_recommendation", {});
+    await execute("schedule_next_monitoring", {});
+    await execute("generate_heat_report", {});
     state.status = "SAVING";
-    event(
+    await db.update(autonomousAgentRuns).set({ status: state.status, lastHeartbeatAt: new Date() }).where(eq(autonomousAgentRuns.id, state.runId));
+    await event(
       state,
       "memory.saved",
       "Agent run, tools, evidence, and actions saved to long-term memory.",
@@ -197,7 +226,7 @@ export async function runAutonomousAgent(input: {
       input.onEvent
     );
     state.status = "COMPLETED";
-    event(
+    await event(
       state,
       "agent.completed",
       `Operational risk completed at ${state.risk.score}/100.`,
@@ -236,6 +265,7 @@ export async function runAutonomousAgent(input: {
       maxSteps: AGENT_CONFIG.maxSteps,
       maxToolCalls: AGENT_CONFIG.maxToolCalls,
       generatedAt: new Date().toISOString(),
+      report: state.durable.report,
     };
     await Promise.all([
       db
@@ -248,50 +278,26 @@ export async function runAutonomousAgent(input: {
           riskScore: state.risk.score,
           riskLevel: state.risk.level,
           result: response,
+          monitoringRunId: state.durable.monitoringRunId,
+          operationalAgentRunId: state.durable.operationalAgentRunId,
           completedAt: new Date(),
         })
         .where(eq(autonomousAgentRuns.id, state.runId)),
-      state.events.length
-        ? db.insert(autonomousAgentEvents).values(
-            state.events.map(item => ({
-              id: nanoid(),
-              runId: state.runId,
-              organizationId: input.organizationId,
-              type: item.type,
-              message: item.message,
-              metadata: item.metadata ?? null,
-              createdAt: new Date(item.createdAt),
-            }))
-          )
-        : Promise.resolve(),
-      state.toolCalls.length
-        ? db.insert(autonomousAgentToolCalls).values(
-            state.toolCalls.map(call => ({
-              id: nanoid(),
-              runId: state.runId,
-              organizationId: input.organizationId,
-              toolName: call.tool,
-              status: call.status,
-              durationMs: call.durationMs,
-              inputJson: call.input,
-              outputSummary: call.outputSummary,
-              createdAt: new Date(call.createdAt),
-            }))
-          )
-        : Promise.resolve(),
+      Promise.resolve(),
     ]);
     return response;
   } catch (error) {
-    state.status = "FAILED";
-    event(state, "agent.failed", "HeatCheck Agent did not complete.", undefined, input.onEvent);
+    const cancelled = state.status === "CANCELLED";
+    state.status = cancelled ? "CANCELLED" : "FAILED";
+    await event(state, cancelled ? "agent.cancelled" : "agent.failed", cancelled ? "HeatCheck Agent run was cancelled." : "HeatCheck Agent did not complete.", undefined, input.onEvent);
     await db
       .update(autonomousAgentRuns)
       .set({
-        status: "FAILED",
+        status: state.status,
         stepsUsed: state.stepNumber,
         toolCallsUsed: state.toolCalls.length,
         fallbackUsed: state.planner.fallbackUsed,
-        errorCode: error instanceof TRPCError ? error.code : "AGENT_FAILURE",
+        errorCode: cancelled ? "CANCELLED" : error instanceof TRPCError ? error.code : "AGENT_FAILURE",
         completedAt: new Date(),
       })
       .where(eq(autonomousAgentRuns.id, state.runId));
@@ -302,6 +308,15 @@ export async function runAutonomousAgent(input: {
           message: "HeatCheck Agent could not complete this run.",
         });
   }
+}
+
+export async function cancelAutonomousAgentRun(userId: number, organizationId: string, runId: string) {
+  await requireWorkspaceMember(userId, organizationId); const db = await requireDb();
+  const run = (await db.select().from(autonomousAgentRuns).where(and(eq(autonomousAgentRuns.id, runId), eq(autonomousAgentRuns.organizationId, organizationId))).limit(1))[0];
+  if (!run) throw new TRPCError({ code: "NOT_FOUND", message: "Agent run not found." });
+  if (["COMPLETED", "FAILED", "CANCELLED"].includes(run.status)) return { cancelled: false, status: run.status };
+  await db.update(autonomousAgentRuns).set({ cancelRequested: true }).where(eq(autonomousAgentRuns.id, runId));
+  return { cancelled: true, status: "CANCELLATION_REQUESTED" };
 }
 
 export async function listAutonomousAgentRuns(
@@ -337,7 +352,8 @@ export async function getAutonomousAgentRun(
     db
       .select()
       .from(autonomousAgentEvents)
-      .where(eq(autonomousAgentEvents.runId, runId)),
+      .where(eq(autonomousAgentEvents.runId, runId))
+      .orderBy(asc(autonomousAgentEvents.sequence)),
     db
       .select()
       .from(autonomousAgentToolCalls)

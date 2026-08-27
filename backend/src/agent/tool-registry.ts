@@ -91,6 +91,12 @@ export async function executeRegisteredTool(
       outputSummary: { error: error instanceof Error ? error.name : "UNKNOWN" },
       createdAt: new Date().toISOString(),
     });
+    state.events.push({
+      type: "tool.failed",
+      message: `${name.replaceAll("_", " ")} failed safely.`,
+      createdAt: new Date().toISOString(),
+      metadata: { tool: name, error: error instanceof Error ? error.name : "UNKNOWN" },
+    });
     throw error;
   } finally {
     clearTimeout(timeout);

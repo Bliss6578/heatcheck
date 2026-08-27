@@ -984,6 +984,20 @@ export async function approveAction(input: {
       code: "BAD_REQUEST",
       message: "This action is not awaiting approval.",
     });
+  const execution = { externalDelivery: false, scheduleUpdated: false };
+  const operationalRun = (await db.select().from(agentRuns).where(eq(agentRuns.id, action[0].agentRunId)).limit(1))[0];
+  if (operationalRun) {
+    const location = (await db.select().from(locations).where(eq(locations.id, operationalRun.locationId)).limit(1))[0];
+    const observation = (await db.select().from(heatObservations).where(eq(heatObservations.id, operationalRun.observationId)).limit(1))[0];
+    if (action[0].actionType === "CREATE_HEAT_ALERT" && location && observation) {
+      const incident = (await db.select().from(incidents).where(eq(incidents.observationId, observation.id)).limit(1))[0];
+      if (incident) { const delivery = await deliverManagedHeatAlert({ organizationId: input.organizationId, locationId: location.id, locationName: location.name, incidentId: incident.id, riskScore: observation.riskScore, riskLevel: observation.riskLevel, summary: incident.summary }); execution.externalDelivery = delivery.delivered; }
+    }
+    if (action[0].actionType === "CHANGE_MONITORING_FREQUENCY" && location) {
+      const details = (action[0].executionResult ?? {}) as { title?: string }; const minutes = Number(details.title?.match(/\d+/)?.[0] ?? workspace.organization.monitoringIntervalMinutes);
+      await db.update(locations).set({ lastAnalysisAt: new Date(), nextAnalysisAt: new Date(Date.now() + Math.max(5, Math.min(1440, minutes)) * 60_000) }).where(eq(locations.id, location.id)); execution.scheduleUpdated = true;
+    }
+  }
   await db
     .update(agentActions)
     .set({
@@ -992,19 +1006,16 @@ export async function approveAction(input: {
       executedAt: new Date(),
       executionResult: {
         approval: "recorded",
-        externalDelivery: "not configured",
-        note: "No external notification or schedule was sent by Heatcheck.",
+        ...execution,
+        note: "Approved action executed through configured HeatCheck-native integrations.",
       },
     })
     .where(eq(agentActions.id, input.actionId));
-  const verification = {
-    verified: false,
-    reason: "external_execution_not_configured",
-  } as const;
+  const verification = operationalRun ? await verifyAfterApproval(input) : { verified: false, reason: "missing_operational_run" } as const;
   await logEvent({
     organizationId: input.organizationId,
     type: "action.approved",
-    message: `${action[0].actionType} was approved and recorded; no external delivery connector is configured.`,
+    message: `${action[0].actionType} was approved and executed through its configured HeatCheck integration.`,
     payload: { actionId: input.actionId },
   });
   await writeAuditLog({

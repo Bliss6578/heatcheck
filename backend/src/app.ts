@@ -7,7 +7,7 @@ import { registerStorageProxy } from "./_core/storageProxy.js";
 import { getDb, getUserByOpenId } from "./db.js";
 import { appRouter } from "./routers.js";
 import { registerScheduledMonitoring } from "./scheduledMonitoring.js";
-import { runAutonomousAgent } from "./agent/orchestrator/run-agent.js";
+import { cancelAutonomousAgentRun, getAutonomousAgentRun, runAutonomousAgent } from "./agent/orchestrator/run-agent.js";
 import { apiRateLimit } from "./rateLimit.js";
 import { errorTelemetry, requestTelemetry } from "./observability.js";
 import { getDashboardData } from "./heatcheck/monitoring.js";
@@ -74,22 +74,51 @@ export function createApp() {
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
-    const send = (type: string, payload: unknown) =>
-      res.write(`event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`);
+    let sequence = 0;
+    const send = (type: string, payload: unknown) => {
+      sequence += 1;
+      res.write(`id: ${sequence}\nevent: ${type}\ndata: ${JSON.stringify(payload)}\n\n`);
+    };
+    const heartbeat = setInterval(() => res.write(`: heartbeat ${Date.now()}\n\n`), 15_000);
     try {
       const result = await runAutonomousAgent({
         userId: user.id,
         organizationId,
         locationId,
         goal,
+        idempotencyKey: req.get("idempotency-key")?.slice(0, 100),
         onEvent: item => send("activity", item),
       });
       send("result", result);
     } catch (error) {
       send("failure", { message: error instanceof Error ? error.message : "Agent run failed." });
     } finally {
+      clearInterval(heartbeat);
       res.end();
     }
+  });
+  app.get("/api/agent/runs/:runId/events", async (req, res) => {
+    const { userId } = getAuth(req); const user = userId ? await getUserByOpenId(userId) : null;
+    const organizationId = typeof req.query.organizationId === "string" ? req.query.organizationId : "";
+    if (!user) return res.status(401).json({ error: "Authentication required." });
+    const detail = await getAutonomousAgentRun(user.id, organizationId, req.params.runId);
+    const after = Math.max(0, Number(req.query.after ?? req.get("last-event-id") ?? 0));
+    return res.json({ run: detail.run, events: detail.events.filter(item => item.sequence > after) });
+  });
+  app.post("/api/agent/runs/:runId/cancel", async (req, res) => {
+    const { userId } = getAuth(req); const user = userId ? await getUserByOpenId(userId) : null;
+    const organizationId = typeof req.body?.organizationId === "string" ? req.body.organizationId : "";
+    if (!user) return res.status(401).json({ error: "Authentication required." });
+    return res.json(await cancelAutonomousAgentRun(user.id, organizationId, req.params.runId));
+  });
+  app.get("/api/agent/runs/:runId/report", async (req, res) => {
+    const { userId } = getAuth(req); const user = userId ? await getUserByOpenId(userId) : null;
+    const organizationId = typeof req.query.organizationId === "string" ? req.query.organizationId : "";
+    if (!user) return res.status(401).json({ error: "Authentication required." });
+    const detail = await getAutonomousAgentRun(user.id, organizationId, req.params.runId);
+    const result = (detail.run.result ?? {}) as Record<string, any>; const risk = result.risk ?? {};
+    const report = `<!doctype html><html><head><meta charset="utf-8"><title>HeatCheck Agent Report</title><style>body{font:15px system-ui;margin:40px;color:#171713;max-width:900px}h1{font-size:44px}.score{font-size:64px;color:#ff6b2c}li{margin:8px 0}@media print{button{display:none}}</style></head><body><button onclick="print()">Print / Save as PDF</button><h1>Heat Intelligence Agent Report</h1><p>Run ${escapeHtml(detail.run.id)} · ${escapeHtml(detail.run.goal)}</p><div class="score">${escapeHtml(risk.score ?? "—")}/100</div><h2>${escapeHtml(risk.level ?? "Awaiting result")}</h2><p>${escapeHtml(result.decision?.summary ?? "No summary available.")}</p><h2>Evidence timeline</h2><ol>${detail.events.map(item => `<li>${escapeHtml(item.message)}</li>`).join("")}</ol><h2>Tools</h2><ul>${detail.toolCalls.map(item => `<li>${escapeHtml(item.toolName)} · ${escapeHtml(item.status)} · ${item.durationMs} ms</li>`).join("")}</ul></body></html>`;
+    res.setHeader("Content-Type", "text/html; charset=utf-8"); res.setHeader("Content-Disposition", `attachment; filename="heatcheck-agent-${detail.run.id}.html"`); res.send(report);
   });
   app.get("/api/reports/heat-intelligence", async (req, res) => {
     const { userId } = getAuth(req);

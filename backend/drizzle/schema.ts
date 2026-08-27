@@ -8,6 +8,7 @@ import {
   mysqlTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
 
@@ -35,6 +36,8 @@ export const organizations = mysqlTable("organizations", {
     .default(15)
     .notNull(),
   simulationMode: boolean("simulationMode").default(true).notNull(),
+  notificationPolicy: json("notificationPolicy"),
+  providerPolicy: json("providerPolicy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -477,6 +480,11 @@ export const autonomousAgentRuns = mysqlTable(
     riskLevel: varchar("riskLevel", { length: 32 }),
     result: json("result"),
     errorCode: varchar("errorCode", { length: 64 }),
+    idempotencyKey: varchar("idempotencyKey", { length: 100 }),
+    monitoringRunId: varchar("monitoringRunId", { length: 36 }),
+    operationalAgentRunId: varchar("operationalAgentRunId", { length: 36 }),
+    cancelRequested: boolean("cancelRequested").default(false).notNull(),
+    lastHeartbeatAt: timestamp("lastHeartbeatAt"),
     startedAt: timestamp("startedAt").defaultNow().notNull(),
     completedAt: timestamp("completedAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -487,6 +495,7 @@ export const autonomousAgentRuns = mysqlTable(
       table.createdAt
     ),
     index("autonomous_runs_location_idx").on(table.locationId),
+    uniqueIndex("autonomous_runs_org_idempotency_uidx").on(table.organizationId, table.idempotencyKey),
   ]
 );
 
@@ -499,6 +508,7 @@ export const autonomousAgentEvents = mysqlTable(
     type: varchar("type", { length: 80 }).notNull(),
     message: text("message").notNull(),
     metadata: json("metadata"),
+    sequence: int("sequence").default(0).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   table => [index("autonomous_events_run_idx").on(table.runId)]

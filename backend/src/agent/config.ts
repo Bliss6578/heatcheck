@@ -7,7 +7,7 @@ export const AGENT_CONFIG = {
   ),
   maxToolCalls: Math.max(
     1,
-    Math.min(30, Number(process.env.HEATCHECK_AGENT_MAX_TOOL_CALLS ?? 12))
+    Math.min(30, Number(process.env.HEATCHECK_AGENT_MAX_TOOL_CALLS ?? 16))
   ),
   temperature: 0.2,
 };
