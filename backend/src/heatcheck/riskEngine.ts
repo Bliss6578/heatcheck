@@ -14,7 +14,12 @@ export function riskLevelForScore(score: number): RiskLevel {
 
 export function calculateHeatRisk(
   observation: NormalizedObservation,
-  workersExposed: number
+  workersExposed: number,
+  context: {
+    heatAnomaly?: number | null;
+    vegetationFraction?: number | null;
+    builtUpFraction?: number | null;
+  } = {}
 ): RiskAssessment {
   const temperatureValue =
     observation.maximumTemperature ?? observation.temperature;
@@ -64,6 +69,24 @@ export function calculateHeatRisk(
       score: exposure,
       weight: 0.15,
     },
+    {
+      factor: "Local heat anomaly",
+      value: context.heatAnomaly ?? null,
+      score: presentScore(context.heatAnomaly ?? null, 0, 8),
+      weight: 0.08,
+    },
+    {
+      factor: "Low vegetation cover",
+      value: context.vegetationFraction ?? null,
+      score: context.vegetationFraction == null ? 0 : clamp((1 - context.vegetationFraction) * 100),
+      weight: 0.08,
+    },
+    {
+      factor: "Built-up surface",
+      value: context.builtUpFraction ?? null,
+      score: context.builtUpFraction == null ? 0 : clamp(context.builtUpFraction * 100),
+      weight: 0.08,
+    },
   ].filter(item => item.value !== null);
   const availableWeight = candidates.reduce(
     (sum, item) => sum + item.weight,
@@ -84,6 +107,6 @@ export function calculateHeatRisk(
     level,
     operationalExposureScore: Math.round(exposure),
     factors,
-    summary: `${level} operational heat risk (${score}/100) based on thermal, humidity, solar, air-quality, and exposure inputs.`,
+    summary: `${level} operational heat risk (${score}/100) based on thermal, humidity, solar, land-cover, anomaly, air-quality, and exposure inputs.`,
   };
 }

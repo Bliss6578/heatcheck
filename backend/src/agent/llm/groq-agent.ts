@@ -28,7 +28,7 @@ export class GroqAgentLLM implements AgentLLM {
   private readonly client: Groq;
   constructor(apiKey = process.env.GROQ_API_KEY) {
     if (!apiKey) throw new Error("GROQ_API_KEY is not configured");
-    this.client = new Groq({ apiKey, timeout: 20_000, maxRetries: 0 });
+    this.client = new Groq({ apiKey, timeout: AGENT_CONFIG.timeoutMs, maxRetries: 0 });
   }
   async plan(input: {
     state: HeatAgentState;
@@ -43,6 +43,8 @@ export class GroqAgentLLM implements AgentLLM {
         const response = await this.client.chat.completions.create({
           model: AGENT_CONFIG.model,
           temperature: AGENT_CONFIG.temperature,
+          top_p: AGENT_CONFIG.topP,
+          max_completion_tokens: AGENT_CONFIG.maxCompletionTokens,
           messages: [
             { role: "system", content: HEATCHECK_AGENT_SYSTEM_PROMPT },
             {

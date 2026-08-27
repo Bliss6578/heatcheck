@@ -2,11 +2,11 @@ import type { AgentLLM, HeatAgentState, PlannerDecision } from "./types.js";
 import type { ToolRegistry } from "./tool-registry.js";
 
 const workflows: Record<HeatAgentState["goal"], string[]> = {
-  ANALYZE_LOCATION: ["get_previous_analysis", "get_heatmap", "get_environmental_conditions", "detect_heat_hotspots", "calculate_heat_risk", "compare_heat_conditions", "get_satellite_environment", "get_street_environment"],
+  ANALYZE_LOCATION: ["get_previous_analysis", "get_heatmap", "get_environmental_conditions", "detect_heat_hotspots", "calculate_heat_risk", "compare_heat_conditions"],
   MONITOR_LOCATION: ["get_previous_analysis", "get_heatmap", "get_environmental_conditions", "detect_heat_hotspots", "calculate_heat_risk", "compare_heat_conditions"],
   DETECT_HOTSPOTS: ["get_heatmap", "get_environmental_conditions", "detect_heat_hotspots", "calculate_heat_risk"],
   TRACK_HEAT_CHANGE: ["get_previous_analysis", "get_heatmap", "get_environmental_conditions", "detect_heat_hotspots", "calculate_heat_risk", "compare_heat_conditions"],
-  ASSESS_EVENT_HEAT_RISK: ["get_heatmap", "get_environmental_conditions", "get_satellite_environment", "get_street_environment", "detect_heat_hotspots", "calculate_heat_risk"],
+  ASSESS_EVENT_HEAT_RISK: ["get_heatmap", "get_environmental_conditions", "detect_heat_hotspots", "calculate_heat_risk"],
 };
 export class DeterministicPlanner {
   next(state: HeatAgentState): PlannerDecision {
@@ -41,14 +41,17 @@ export class HybridPlanner {
     if (baseline.type === "TOOL_CALL") return baseline;
     if (!this.llm || state.planner.fallbackUsed) return baseline;
     try {
-      const plannerVisible = new Set(["get_location_history", "get_satellite_environment", "get_street_environment"]);
+      const completed = new Set(state.toolCalls.filter(call => call.status === "COMPLETED").map(call => call.tool));
+      const plannerVisible = new Set(["get_satellite_environment", "get_street_environment"]);
+      const tools = this.registry.list().filter(tool => plannerVisible.has(tool.name) && !completed.has(tool.name)).map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.jsonSchema,
+      }));
+      if (!tools.length) return baseline;
       return await this.llm.plan({
         state,
-        tools: this.registry.list().filter(tool => plannerVisible.has(tool.name)).map(tool => ({
-          name: tool.name,
-          description: tool.description,
-          parameters: tool.jsonSchema,
-        })),
+        tools,
       });
     } catch {
       state.planner.available = false;

@@ -10,4 +10,7 @@ export const AGENT_CONFIG = {
     Math.min(30, Number(process.env.HEATCHECK_AGENT_MAX_TOOL_CALLS ?? 16))
   ),
   temperature: 0.2,
+  topP: 0.9,
+  maxCompletionTokens: 700,
+  timeoutMs: 20_000,
 };

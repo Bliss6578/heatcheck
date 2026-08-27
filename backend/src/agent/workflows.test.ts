@@ -7,7 +7,7 @@ function state(goal: AgentGoal): HeatAgentState { return { runId: "run", userId:
 function sequence(goal: AgentGoal) { const planner = new DeterministicPlanner(); const current = state(goal); const tools: string[] = []; for (let index = 0; index < 12; index += 1) { const decision = planner.next(current); if (decision.type === "COMPLETE") break; tools.push(decision.tool); current.toolCalls.push({ tool: decision.tool, status: "COMPLETED", durationMs: 1, input: {}, outputSummary: {}, createdAt: new Date().toISOString() }); } return tools; }
 
 describe("goal-specific agent workflows", () => {
-  it("uses urban context only for comprehensive analysis", () => { expect(sequence("ANALYZE_LOCATION")).toContain("get_street_environment"); expect(sequence("MONITOR_LOCATION")).not.toContain("get_street_environment"); });
+  it("keeps expensive urban context optional for Qwen selection", () => { expect(sequence("ANALYZE_LOCATION")).not.toContain("get_street_environment"); expect(sequence("ANALYZE_LOCATION")).not.toContain("get_satellite_environment"); expect(sequence("MONITOR_LOCATION")).not.toContain("get_street_environment"); });
   it("keeps hotspot detection focused", () => { expect(sequence("DETECT_HOTSPOTS")).toEqual(["get_heatmap", "get_environmental_conditions", "detect_heat_hotspots", "calculate_heat_risk"]); });
   it("requires previous memory when tracking change", () => { expect(sequence("TRACK_HEAT_CHANGE")[0]).toBe("get_previous_analysis"); });
 });

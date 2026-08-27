@@ -22,6 +22,7 @@ function Router() {
       <Route path={"/app/incidents"} component={OperationsApp} />
       <Route path={"/app/actions"} component={OperationsApp} />
       <Route path={"/app/settings"} component={OperationsApp} />
+      <Route path={"/app/agent-runs/:runId"} component={OperationsApp} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

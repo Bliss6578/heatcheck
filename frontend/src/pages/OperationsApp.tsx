@@ -1,6 +1,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useAuth as useClerkAuth } from "@clerk/react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { AIChatBox, type Message as ChatMessage } from "@/components/AIChatBox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -326,6 +327,7 @@ function OperationsContent() {
   const [agentError, setAgentError] = useState("");
   const [liveEvents, setLiveEvents] = useState<Array<{ type: string; message: string; createdAt: string }>>([]);
   const [agentResult, setAgentResult] = useState<any>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [selectedRunId, setSelectedRunId] = useState("");
   const [reportPending, setReportPending] = useState(false);
   const [alertEmail, setAlertEmail] = useState("");
@@ -348,6 +350,10 @@ function OperationsContent() {
     { organizationId },
     { enabled: Boolean(workspace.data?.organization.id) }
   );
+  const assistantChat = trpc.heatcheck.agent.chat.useMutation({
+    onSuccess: response => setChatMessages(current => [...current, { role: "assistant", content: response.message }]),
+    onError: error => setChatMessages(current => [...current, { role: "assistant", content: `I could not read the workspace right now: ${error.message}` }]),
+  });
   const routeRunId = path.startsWith("/app/agent-runs/") ? path.split("/").pop() ?? "" : "";
   const detailRunId = routeRunId || selectedRunId;
   const agentDetail = trpc.heatcheck.agent.detail.useQuery(
@@ -476,6 +482,13 @@ function OperationsContent() {
   const runNow = () =>
     selectedLocation &&
     run.mutate({ organizationId, locationId: selectedLocation.id });
+  const sendChatMessage = (content: string) => {
+    if (!selectedLocation || assistantChat.isPending) return;
+    const nextMessage: ChatMessage = { role: "user", content };
+    const history = [...chatMessages, nextMessage].filter((message): message is ChatMessage & { role: "user" | "assistant" } => message.role !== "system").slice(-8);
+    setChatMessages(current => [...current, nextMessage]);
+    assistantChat.mutate({ organizationId, locationId: selectedLocation.id, message: content, history });
+  };
 
   return (
     <div className="ops-shell">
@@ -613,6 +626,21 @@ function OperationsContent() {
                 </ol>
               </div>
             )}
+          </article>
+          <article className="ops-chat-panel">
+            <div className="ops-chat-panel__head">
+              <div><p>WORKSPACE COPILOT</p><h2>Ask HeatCheck</h2></div>
+              <span><Bot size={16} /> QWEN / GROQ</span>
+            </div>
+            <AIChatBox
+              messages={chatMessages}
+              onSendMessage={sendChatMessage}
+              isLoading={assistantChat.isPending}
+              height={420}
+              placeholder={selectedLocation ? `Ask about ${selectedLocation.name}…` : "Add a location to start chatting"}
+              emptyStateMessage="Ask about the latest risk, trend, hotspots, incidents, or pending actions."
+              suggestedPrompts={["What is the latest heat risk?", "Is the location getting worse?", "Explain the current risk factors."]}
+            />
           </article>
           <article className="ops-card ops-card--risk">
             <span>Latest heat risk</span>

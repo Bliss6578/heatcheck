@@ -25,6 +25,7 @@ import {
 } from "../heatcheck/monitoring.js";
 import { AGENT_CONFIG } from "../agent/config.js";
 import { enqueueAutonomousAgentRun } from "../agent/queue.js";
+import { chatWithHeatCheck } from "../agent/chat.js";
 import {
   cancelAutonomousAgentRun,
   getAutonomousAgentRun,
@@ -95,7 +96,18 @@ export const heatcheckRouter = router({
       fortyGuardConfigured: Boolean(process.env.FORTYGUARD_API_KEY),
       database: Boolean(process.env.DATABASE_URL),
       mockMode: process.env.HEATCHECK_MOCK_MODE === "true",
+      model: AGENT_CONFIG.model,
+      parameters: { temperature: AGENT_CONFIG.temperature, topP: AGENT_CONFIG.topP, maxCompletionTokens: AGENT_CONFIG.maxCompletionTokens, maxSteps: AGENT_CONFIG.maxSteps, maxToolCalls: AGENT_CONFIG.maxToolCalls },
+      mcpServer: null,
     })),
+    chat: heatAnalysisProcedure
+      .input(z.object({
+        organizationId: z.string().min(8).max(36),
+        locationId: z.string().min(8).max(36),
+        message: z.string().trim().min(2).max(500),
+        history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(1000) })).max(8).default([]),
+      }))
+      .mutation(({ ctx, input }) => chatWithHeatCheck({ userId: ctx.user.id, ...input })),
     run: heatAnalysisProcedure
       .input(
         z.object({

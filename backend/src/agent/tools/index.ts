@@ -73,6 +73,20 @@ function addAction(
   return action;
 }
 
+function numericFraction(value: unknown) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return Math.max(0, Math.min(1, number > 1 ? number / 100 : number));
+}
+
+function landCoverContext(value: unknown) {
+  const root = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const result = root.result && typeof root.result === "object" ? root.result as Record<string, unknown> : root;
+  const vegetation = result.vegetationFraction ?? result.vegetation_fraction ?? result.vegetationPercentage ?? result.vegetation_percentage ?? result.ndvi;
+  const builtUp = result.builtUpFraction ?? result.built_up_fraction ?? result.builtUpPercentage ?? result.built_up_percentage ?? result.impervious_fraction;
+  return { vegetationFraction: numericFraction(vegetation), builtUpFraction: numericFraction(builtUp) };
+}
+
 async function requireAgentDb() {
   const db = await getDb();
   if (!db) throw new Error("HeatCheck memory is unavailable.");
@@ -269,12 +283,15 @@ export function createAgentToolRegistry() {
           throw new Error(
             "Environmental observations are required before risk calculation."
           );
+        const anomalies = state.hotspots.map(hotspot => Number(hotspot.anomaly ?? 0)).filter(Number.isFinite);
+        const landCover = landCoverContext(state.observations.get_satellite_environment);
         const risk = calculateHeatRisk(
           environment,
           environment.hotspots.reduce(
             (sum, hotspot) => sum + hotspot.workersExposed,
             0
-          )
+          ),
+          { heatAnomaly: anomalies.length ? Math.max(...anomalies) : 0, ...landCover }
         );
         state.risk = risk;
         return risk;

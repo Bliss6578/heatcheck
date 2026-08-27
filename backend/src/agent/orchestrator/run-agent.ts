@@ -208,6 +208,11 @@ export async function runAutonomousAgent(input: {
       throw new Error(
         "The agent reached its step limit before calculating risk."
       );
+    // Recalculate once after Qwen's optional context calls so satellite land-cover
+    // evidence can influence the same deterministic formula without giving the LLM
+    // authority over the score.
+    if (state.toolCalls.some(call => call.tool === "get_satellite_environment" && call.status === "COMPLETED"))
+      await execute("calculate_heat_risk", { latitude: state.location.latitude, longitude: state.location.longitude, radiusKm: state.radiusKm });
     state.status = "ACTING";
     await db.update(autonomousAgentRuns).set({ status: state.status, lastHeartbeatAt: new Date() }).where(eq(autonomousAgentRuns.id, state.runId));
     await execute("save_heat_analysis", {});
