@@ -230,20 +230,30 @@ export async function runAutonomousAgent(input: {
       undefined,
       input.onEvent
     );
-    state.status = "COMPLETED";
-    await event(
-      state,
-      "agent.completed",
-      `Operational risk completed at ${state.risk.score}/100.`,
-      undefined,
-      input.onEvent
-    );
     const comparison = state.observations.compare_heat_conditions as
       | Record<string, unknown>
       | undefined;
+    const environment = state.observations.get_environmental_conditions as
+      | {
+          observedAt?: Date | string;
+          temperature?: number | null;
+          minimumTemperature?: number | null;
+          maximumTemperature?: number | null;
+          meanTemperature?: number | null;
+          apparentTemperature?: number | null;
+          heatIndex?: number | null;
+          wetBulbTemperature?: number | null;
+          relativeHumidity?: number | null;
+          solarIrradiance?: number | null;
+          source?: string;
+        }
+      | undefined;
+    const report = state.durable.report as
+      | { reportId?: unknown; generatedAt?: unknown }
+      | undefined;
     const response = {
       runId: state.runId,
-      status: state.status,
+      status: "COMPLETED" as const,
       agent: {
         provider: "groq",
         model: AGENT_CONFIG.model,
@@ -257,8 +267,21 @@ export async function runAutonomousAgent(input: {
         level: publicLevel(state.risk.level),
         factors: state.risk.factors,
       },
-      temperature: state.observations.get_environmental_conditions,
-      weather: state.observations.get_weather_context,
+      temperature: environment
+        ? {
+            observedAt: environment.observedAt,
+            temperature: environment.temperature ?? null,
+            minimumTemperature: environment.minimumTemperature ?? null,
+            maximumTemperature: environment.maximumTemperature ?? null,
+            meanTemperature: environment.meanTemperature ?? null,
+            apparentTemperature: environment.apparentTemperature ?? null,
+            heatIndex: environment.heatIndex ?? null,
+            wetBulbTemperature: environment.wetBulbTemperature ?? null,
+            relativeHumidity: environment.relativeHumidity ?? null,
+            solarIrradiance: environment.solarIrradiance ?? null,
+            source: environment.source,
+          }
+        : null,
       hotspots: state.hotspots,
       trend: comparison,
       decision: {
@@ -271,26 +294,38 @@ export async function runAutonomousAgent(input: {
       maxSteps: AGENT_CONFIG.maxSteps,
       maxToolCalls: AGENT_CONFIG.maxToolCalls,
       generatedAt: new Date().toISOString(),
-      report: state.durable.report,
+      report: report
+        ? { reportId: report.reportId, generatedAt: report.generatedAt }
+        : null,
     };
-    await Promise.all([
-      db
-        .update(autonomousAgentRuns)
-        .set({
-          status: state.status,
-          fallbackUsed: state.planner.fallbackUsed,
-          stepsUsed: state.stepNumber,
-          toolCallsUsed: state.toolCalls.length,
-          riskScore: state.risk.score,
-          riskLevel: state.risk.level,
-          result: response,
-          monitoringRunId: state.durable.monitoringRunId,
-          operationalAgentRunId: state.durable.operationalAgentRunId,
-          completedAt: new Date(),
-        })
-        .where(eq(autonomousAgentRuns.id, state.runId)),
-      Promise.resolve(),
-    ]);
+    await db
+      .update(autonomousAgentRuns)
+      .set({
+        status: "COMPLETED",
+        fallbackUsed: state.planner.fallbackUsed,
+        stepsUsed: state.stepNumber,
+        toolCallsUsed: state.toolCalls.length,
+        riskScore: state.risk.score,
+        riskLevel: state.risk.level,
+        result: response,
+        monitoringRunId: state.durable.monitoringRunId,
+        operationalAgentRunId: state.durable.operationalAgentRunId,
+        errorCode: null,
+        completedAt: new Date(),
+      })
+      .where(eq(autonomousAgentRuns.id, state.runId));
+    state.status = "COMPLETED";
+    try {
+      await event(
+        state,
+        "agent.completed",
+        `Operational risk completed at ${state.risk.score}/100.`,
+        undefined,
+        input.onEvent
+      );
+    } catch (error) {
+      console.error("HeatCheck completed the run but could not persist its terminal event.", error);
+    }
     return response;
   } catch (error) {
     const cancelled = state.status === "CANCELLED";
