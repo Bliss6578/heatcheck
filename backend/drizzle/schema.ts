@@ -69,7 +69,7 @@ export const locations = mysqlTable(
     longitude: double("longitude").notNull(),
     polygonGeojson: json("polygonGeojson"),
     timezone: varchar("timezone", { length: 80 })
-      .default("America/Phoenix")
+      .default("UTC")
       .notNull(),
     monitoringEnabled: boolean("monitoringEnabled").default(true).notNull(),
     riskThreshold: int("riskThreshold").default(76).notNull(),

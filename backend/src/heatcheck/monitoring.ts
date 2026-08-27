@@ -259,7 +259,20 @@ async function getObservation(input: {
             : "Environmental parameter request failed",
         completedAt: new Date(),
       });
-      throw error;
+      const normalized = provider.normalize({
+        heatmap,
+        environment: { status: "Unavailable", result: {}, raw: {} },
+        latitude: input.location.latitude,
+        longitude: input.location.longitude,
+      });
+      normalized.summary = {
+        ...normalized.summary,
+        environmentalProviderStatus: "UNAVAILABLE",
+        environmentalProviderReason:
+          error instanceof Error ? error.message : "Environmental parameters were unavailable.",
+      };
+      setCached(cacheKey, normalized);
+      return normalized;
     }
   } catch (error) {
     if (!heatmapCompleted) {
@@ -297,15 +310,34 @@ export async function runMonitoring(input: {
     .where(
       and(
         eq(monitoringRuns.locationId, location.id),
-        eq(monitoringRuns.status, "ANALYZING")
+        inArray(monitoringRuns.status, [
+          "ANALYZING",
+          "EVALUATING",
+          "ACTING",
+          "VERIFYING",
+        ])
       )
     )
+    .orderBy(desc(monitoringRuns.createdAt))
     .limit(1);
-  if (active[0])
-    throw new TRPCError({
-      code: "CONFLICT",
-      message: "A Heatcheck analysis is already running for this location.",
-    });
+  if (active[0]) {
+    const activeSince = active[0].startedAt ?? active[0].createdAt;
+    const isStale =
+      activeSince && Date.now() - new Date(activeSince).getTime() > 6 * 60_000;
+    if (!isStale)
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "A Heatcheck analysis is already running for this location.",
+      });
+    await db
+      .update(monitoringRuns)
+      .set({
+        status: "FAILED",
+        error: "The previous analysis was interrupted before completion.",
+        completedAt: new Date(),
+      })
+      .where(eq(monitoringRuns.id, active[0].id));
+  }
 
   const monitoringRunId = nanoid();
   let mode: "SIMULATION" | "LIVE" =
@@ -1089,7 +1121,7 @@ export async function getDashboardData(input: {
       .from(heatObservations)
       .where(eq(heatObservations.organizationId, input.organizationId))
       .orderBy(desc(heatObservations.observedAt))
-      .limit(12),
+      .limit(250),
     db
       .select()
       .from(agentRuns)
@@ -1098,12 +1130,35 @@ export async function getDashboardData(input: {
       .limit(8),
   ]);
   const observation = latestObservation[0] ?? null;
-  const latestHotspots = observation
+  const latestObservationByLocation = new Map<string, (typeof observationHistory)[number]>();
+  for (const item of observationHistory) {
+    if (!latestObservationByLocation.has(item.locationId))
+      latestObservationByLocation.set(item.locationId, item);
+  }
+  if (observation && !latestObservationByLocation.has(observation.locationId))
+    latestObservationByLocation.set(observation.locationId, observation);
+  const latestObservationIds = Array.from(latestObservationByLocation.values()).map(
+    item => item.id
+  );
+  const locationHotspots = latestObservationIds.length
     ? await db
         .select()
         .from(hotspots)
-        .where(eq(hotspots.observationId, observation.id))
+        .where(inArray(hotspots.observationId, latestObservationIds))
     : [];
+  const latestHotspots = observation
+    ? locationHotspots.filter(item => item.observationId === observation.id)
+    : [];
+  const locationConditions = organizationLocations.map(location => {
+    const locationObservation = latestObservationByLocation.get(location.id) ?? null;
+    return {
+      locationId: location.id,
+      observation: locationObservation,
+      hotspots: locationObservation
+        ? locationHotspots.filter(item => item.observationId === locationObservation.id)
+        : [],
+    };
+  });
   const agentRunIds = recentAgentRuns.map(run => run.id);
   const decisions = agentRunIds.length
     ? await db
@@ -1145,6 +1200,7 @@ export async function getDashboardData(input: {
     locations: organizationLocations,
     latestObservation: observation,
     hotspots: latestHotspots,
+    locationConditions,
     openIncidents,
     recentEvents,
     pendingActions,

@@ -75,7 +75,7 @@ const locationInput = z.object({
       isBoundedGeojson,
       "Provide a bounded GeoJSON Polygon or FeatureCollection."
     ),
-  timezone: z.string().trim().min(3).max(80).default("America/Phoenix"),
+  timezone: z.string().trim().min(3).max(80).optional(),
   monitoringEnabled: z.boolean().default(true),
   riskThreshold: z.number().int().min(0).max(100).default(76),
 });

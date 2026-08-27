@@ -256,7 +256,6 @@ function Onboarding() {
         name: locationName,
         latitude: Number(latitude),
         longitude: Number(longitude),
-        timezone: "America/Phoenix",
         monitoringEnabled: true,
         riskThreshold: 76,
       },
@@ -451,10 +450,11 @@ function OperationsContent() {
     setAlertEmail(organization.notificationPolicy?.emailTo ?? ""); setAlertSms(organization.notificationPolicy?.smsTo ?? ""); setNotificationThreshold(String(organization.notificationPolicy?.minimumRiskScore ?? 65)); setProviderDailyLimit(String(organization.providerPolicy?.dailyCallLimit ?? 500));
   }, [dashboard.data?.workspace.organization]);
   const createLocation = trpc.heatcheck.locations.create.useMutation({
-    onSuccess: async () => {
+    onSuccess: async location => {
       setNewLocationName("");
       setNewLatitude("");
       setNewLongitude("");
+      setSelectedLocationId(location.id);
       await utils.heatcheck.dashboard.get.invalidate({ organizationId });
     },
   });
@@ -488,11 +488,6 @@ function OperationsContent() {
     );
 
   const data = dashboard.data;
-  const observation = data.latestObservation;
-  const heatmapGeojson =
-    observation?.summary && typeof observation.summary === "object"
-      ? (observation.summary as { geojson?: unknown }).geojson
-      : undefined;
   const activeTab = productTabs.includes(path as (typeof productTabs)[number])
     ? path
     : "/app";
@@ -500,6 +495,15 @@ function OperationsContent() {
   const selectedLocation =
     data.locations.find(location => location.id === selectedLocationId) ??
     firstLocation;
+  const selectedConditions = selectedLocation
+    ? data.locationConditions.find(item => item.locationId === selectedLocation.id)
+    : undefined;
+  const observation = selectedConditions?.observation ?? null;
+  const selectedHotspots = selectedConditions?.hotspots ?? [];
+  const heatmapGeojson =
+    observation?.summary && typeof observation.summary === "object"
+      ? (observation.summary as { geojson?: unknown }).geojson
+      : undefined;
   const canRun = Boolean(selectedLocation) && !run.isPending;
   const runNow = () =>
     selectedLocation &&
@@ -703,7 +707,7 @@ function OperationsContent() {
           </article>
           <article className="ops-card">
             <span>Active hotspots</span>
-            <strong>{data.hotspots.length}</strong>
+            <strong>{selectedHotspots.length}</strong>
             <small>from the latest observation</small>
           </article>
           <article className="ops-card">
@@ -729,11 +733,11 @@ function OperationsContent() {
               selectedLocation={selectedLocation}
               onSelect={setSelectedLocationId}
               geojson={heatmapGeojson}
-              hotspots={data.hotspots}
+              hotspots={selectedHotspots}
             />
-            {data.hotspots.length > 0 && (
+            {selectedHotspots.length > 0 && (
               <div className="ops-map-alerts">
-                {data.hotspots.slice(0, 4).map(hotspot => (
+                {selectedHotspots.slice(0, 4).map(hotspot => (
                   <span key={hotspot.id}>
                     <i /> {hotspot.label}
                     <strong>{hotspot.temperature.toFixed(1)}°C</strong>
@@ -969,7 +973,6 @@ function OperationsContent() {
                 name: newLocationName,
                 latitude: Number(newLatitude),
                 longitude: Number(newLongitude),
-                timezone: "America/Phoenix",
                 monitoringEnabled: true,
                 riskThreshold: 76,
               });
@@ -1025,7 +1028,7 @@ function OperationsContent() {
               selectedLocation={selectedLocation}
               onSelect={setSelectedLocationId}
               geojson={heatmapGeojson}
-              hotspots={data.hotspots}
+              hotspots={selectedHotspots}
             />
             <div className="ops-location-map-copy">
               <span>SELECTED FIELD SITE</span>

@@ -3,9 +3,9 @@ import { createBoundingPolygon, detectHotspots } from "./geo.js";
 
 const FORTYGUARD_BASE_URL = `${(process.env.FORTYGUARD_BASE_URL ?? "https://api.fortyguard.com").replace(/\/$/, "")}/v1`;
 const MAX_POLL_ATTEMPTS = Number(
-  process.env.FORTYGUARD_MAX_POLL_ATTEMPTS ?? 40
+  process.env.FORTYGUARD_MAX_POLL_ATTEMPTS ?? 15
 );
-const POLL_DELAY_MS = Number(process.env.FORTYGUARD_POLL_INTERVAL_MS ?? 3_000);
+const POLL_DELAY_MS = Number(process.env.FORTYGUARD_POLL_INTERVAL_MS ?? 2_000);
 
 type ProviderActivity = { activityId: string; endpoint: string; raw: unknown };
 type ActivityResult = {

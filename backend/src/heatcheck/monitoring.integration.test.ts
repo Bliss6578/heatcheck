@@ -82,8 +82,8 @@ describe("Heatcheck monitoring workflow integration", () => {
 
   it("aggregates persisted thermal, incident, activity, agent, and analytics data for the protected dashboard", async () => {
     const now = new Date();
-    const observation = { id: "observation-001", organizationId: "org-001", riskScore: 84, riskLevel: "SEVERE", observedAt: now };
-    const priorObservation = { id: "observation-000", organizationId: "org-001", riskScore: 65, riskLevel: "HIGH", observedAt: new Date(now.getTime() - 60_000) };
+    const observation = { id: "observation-001", organizationId: "org-001", locationId: "location-001", riskScore: 84, riskLevel: "SEVERE", observedAt: now };
+    const priorObservation = { id: "observation-000", organizationId: "org-001", locationId: "location-001", riskScore: 65, riskLevel: "HIGH", observedAt: new Date(now.getTime() - 60_000) };
     const { db } = createDb([
       [{ id: "location-001", organizationId: "org-001", name: "Phoenix Distribution Center" }],
       [observation],
@@ -102,6 +102,13 @@ describe("Heatcheck monitoring workflow integration", () => {
 
     expect(dashboard.latestObservation?.riskScore).toBe(84);
     expect(dashboard.hotspots).toHaveLength(1);
+    expect(dashboard.locationConditions).toEqual([
+      expect.objectContaining({
+        locationId: "location-001",
+        observation,
+        hotspots: [expect.objectContaining({ id: "hotspot-001" })],
+      }),
+    ]);
     expect(dashboard.openIncidents).toHaveLength(1);
     expect(dashboard.recentEvents).toHaveLength(1);
     expect(dashboard.pendingActions).toHaveLength(1);

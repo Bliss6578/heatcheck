@@ -10,6 +10,7 @@ import {
   type Organization,
 } from "../../drizzle/schema.js";
 import { getDb } from "../db.js";
+import { timezoneForCoordinates } from "./timezone.js";
 
 export type OrganizationRole = "OWNER" | "ADMIN" | "OPERATOR" | "VIEWER";
 
@@ -23,7 +24,7 @@ export type LocationInput = {
   latitude: number;
   longitude: number;
   polygonGeojson?: unknown;
-  timezone: string;
+  timezone?: string;
   riskThreshold: number;
   monitoringEnabled: boolean;
 };
@@ -153,7 +154,7 @@ export async function createLocation(input: { userId: number; organizationId: st
     latitude: input.latitude,
     longitude: input.longitude,
     polygonGeojson: input.polygonGeojson ?? null,
-    timezone: input.timezone,
+    timezone: timezoneForCoordinates(input.latitude, input.longitude),
     monitoringEnabled: input.monitoringEnabled,
     riskThreshold: input.riskThreshold,
   });
