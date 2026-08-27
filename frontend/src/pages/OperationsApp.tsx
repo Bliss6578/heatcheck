@@ -435,7 +435,7 @@ function OperationsContent() {
   };
   const downloadAgentReport = async (runId: string) => {
     const token = await getToken(); const response = await fetch(`/api/agent/runs/${runId}/report?organizationId=${encodeURIComponent(organizationId)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-    if (!response.ok) throw new Error("Agent report generation failed."); const blob = await response.blob(); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `heatcheck-agent-${runId}.html`; anchor.click(); URL.revokeObjectURL(url);
+    if (!response.ok) throw new Error("Agent report generation failed."); const blob = await response.blob(); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `heatcheck-agent-${runId}.pdf`; anchor.click(); URL.revokeObjectURL(url);
   };
   const approve = trpc.heatcheck.actions.approve.useMutation({
     onSuccess: () =>

@@ -27,9 +27,14 @@ export function apiRateLimit(req: Request, res: Response, next: NextFunction) {
   const key = `heatcheck:rate:${identity}:${bucket}`;
   void (async () => {
     let count: number;
+    const requiresDistributed = process.env.RATE_LIMIT_REQUIRE_DISTRIBUTED === "true";
     try {
       count = (await distributedIncrement(key)) ?? 0;
-    } catch { count = 0; }
+    } catch {
+      if (requiresDistributed) return res.status(503).json({ error: "Rate limiting is temporarily unavailable." });
+      count = 0;
+    }
+    if (requiresDistributed && !count) return res.status(503).json({ error: "Distributed rate limiting is not configured." });
     if (!count) {
       const now = Date.now(); const current = local.get(key);
       const state = !current || current.resetAt <= now ? { count: 1, resetAt: now + windowSeconds * 1000 } : { ...current, count: current.count + 1 };
@@ -37,6 +42,7 @@ export function apiRateLimit(req: Request, res: Response, next: NextFunction) {
     }
     res.setHeader("RateLimit-Limit", requestLimit);
     res.setHeader("RateLimit-Remaining", Math.max(0, requestLimit - count));
+    res.setHeader("RateLimit-Policy", `${requestLimit};w=${windowSeconds}`);
     if (count > requestLimit) return res.status(429).json({ error: "Too many requests. Please retry shortly." });
     next();
   })().catch(next);

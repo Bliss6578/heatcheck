@@ -38,20 +38,40 @@ The response agent can create records, decision summaries, incident records, and
 The application includes an authenticated callback at:
 
 ```
-POST /api/scheduled/heatcheck-monitoring
+GET /api/cron/heatcheck-monitoring
 ```
 
-The callback only accepts platform-signed scheduled requests, ignores request-body identifiers, selects locations that are already due, avoids active duplicate analyses, and runs bounded work. The callback cannot be activated from this development environment because the site must first be published. After publishing, create a project-level recurring job that calls the endpoint on the intended cadence, for example every 15 minutes:
+The callback only accepts `Authorization: Bearer <CRON_SECRET>`, selects locations that are already due, avoids active duplicate analyses, and runs bounded work. Vercel Hobby permits only daily Cron invocations, so `vercel.json` retains a daily safety run. For genuine adaptive monitoring, use a signed external scheduler every 15 minutes; it only invokes locations whose `nextAnalysisAt` is due.
+
+The included QStash script creates the recommended production schedule:
+
+```bash
+QSTASH_TOKEN=... HEATCHECK_APP_URL=https://your-app.vercel.app CRON_SECRET=... node scripts/create-monitoring-schedule.mjs
+```
+
+It registers `*/15 * * * *` with an authenticated Authorization header. Keep all three values server-side.
+
+If you use a different scheduler, configure it to call the same endpoint every 15 minutes:
 
 ```bash
 manus-heartbeat create \
   --name heatcheck-monitoring \
   --cron "0 */15 * * * *" \
-  --path /api/scheduled/heatcheck-monitoring \
+  --path /api/cron/heatcheck-monitoring \
   --description "Run due Heatcheck location analyses"
 ```
 
 The expression is a six-field UTC cron expression. Record the returned task identifier in the project’s operating notes so the job can later be inspected, paused, changed, or deleted. Do not use in-process timers for monitoring; managed periodic execution is durable across server restarts.
+
+## Production integrations
+
+Alert delivery is server-managed: users never supply provider keys. Add only the channels you intend to use in Vercel Production variables: `SLACK_WEBHOOK_URL`, `RESEND_API_KEY` plus `ALERT_EMAIL_FROM`/`ALERT_EMAIL_TO`, and/or `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, and `ALERT_SMS_TO`. Trigger one controlled high-risk test location and verify the resulting `notification_logs` records before enabling Autonomous mode.
+
+For distributed multi-instance API protection, add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, then set `RATE_LIMIT_REQUIRE_DISTRIBUTED=true`. In that mode the API fails closed rather than silently falling back to per-instance memory.
+
+Set `SENTRY_DSN` to forward sanitized HTTP failures to Sentry; `OBSERVABILITY_WEBHOOK_URL` remains available for compatible error collectors. Neither receives request bodies, provider payloads, or credentials.
+
+`@dangahagan/weather-mcp` runs over stdio locally. In Vercel functions, HeatCheck automatically uses a bounded keyless Open-Meteo HTTP fallback, preserving the weather-context tool contract without relying on a persistent child process.
 
 ## Validation Commands
 
