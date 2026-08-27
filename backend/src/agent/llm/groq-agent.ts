@@ -50,6 +50,7 @@ export class GroqAgentLLM implements AgentLLM {
           temperature: AGENT_CONFIG.temperature,
           top_p: AGENT_CONFIG.topP,
           max_completion_tokens: AGENT_CONFIG.maxCompletionTokens,
+          reasoning_effort: "none",
           messages: [
             { role: "system", content: HEATCHECK_AGENT_SYSTEM_PROMPT },
             {
