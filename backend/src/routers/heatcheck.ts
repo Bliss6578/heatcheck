@@ -26,6 +26,7 @@ import {
 import { AGENT_CONFIG } from "../agent/config.js";
 import { enqueueAutonomousAgentRun } from "../agent/queue.js";
 import { chatWithHeatCheck } from "../agent/chat.js";
+import { WEATHER_MCP_SERVER } from "../agent/mcp/weather-mcp.js";
 import {
   cancelAutonomousAgentRun,
   getAutonomousAgentRun,
@@ -98,7 +99,7 @@ export const heatcheckRouter = router({
       mockMode: process.env.HEATCHECK_MOCK_MODE === "true",
       model: AGENT_CONFIG.model,
       parameters: { temperature: AGENT_CONFIG.temperature, topP: AGENT_CONFIG.topP, maxCompletionTokens: AGENT_CONFIG.maxCompletionTokens, maxSteps: AGENT_CONFIG.maxSteps, maxToolCalls: AGENT_CONFIG.maxToolCalls },
-      mcpServer: null,
+      mcpServer: { ...WEATHER_MCP_SERVER, enabled: process.env.WEATHER_MCP_ENABLED !== "false" },
     })),
     chat: heatAnalysisProcedure
       .input(z.object({

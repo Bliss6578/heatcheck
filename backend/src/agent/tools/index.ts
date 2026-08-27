@@ -21,6 +21,7 @@ import {
 } from "../actions/permissions.js";
 import { ToolRegistry } from "../tool-registry.js";
 import type { AgentAction, AgentTool } from "../types.js";
+import { callWeatherMcp } from "../mcp/weather-mcp.js";
 
 const locationSchema = z.object({
   latitude: z.number().min(-90).max(90),
@@ -125,6 +126,30 @@ async function enforceProviderBudget(state: Parameters<AgentTool["execute"]>[1][
 
 export function createAgentToolRegistry() {
   const registry = new ToolRegistry();
+  registry.register(
+    tool({
+      name: "get_weather_context",
+      description: "Use the Weather MCP server for current conditions, forecast, and official alerts when extra meteorological context is useful.",
+      riskLevel: "SAFE",
+      schema: locationSchema,
+      jsonSchema: locationJson,
+      maxCalls: 1,
+      async execute(input) {
+        try {
+          return await callWeatherMcp("get_weather_summary", {
+            latitude: input.latitude,
+            longitude: input.longitude,
+            include: ["current", "forecast", "alerts"],
+            days: 2,
+            detail: "summary",
+            units: "metric",
+          });
+        } catch {
+          return { available: false, reason: "WEATHER_MCP_UNAVAILABLE" };
+        }
+      },
+    })
+  );
   registry.register(
     tool({
       name: "get_previous_analysis",

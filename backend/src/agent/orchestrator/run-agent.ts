@@ -258,6 +258,7 @@ export async function runAutonomousAgent(input: {
         factors: state.risk.factors,
       },
       temperature: state.observations.get_environmental_conditions,
+      weather: state.observations.get_weather_context,
       hotspots: state.hotspots,
       trend: comparison,
       decision: {

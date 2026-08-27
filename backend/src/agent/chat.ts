@@ -5,6 +5,7 @@ import { agentActions, autonomousAgentRuns, heatObservations, incidents } from "
 import { getDb } from "../db.js";
 import { requireLocationMember, requireWorkspaceMember } from "../heatcheck/tenant.js";
 import { AGENT_CONFIG } from "./config.js";
+import { callWeatherMcp } from "./mcp/weather-mcp.js";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -34,6 +35,13 @@ export async function chatWithHeatCheck(input: {
     db.select().from(agentActions).where(eq(agentActions.organizationId, input.organizationId)).orderBy(desc(agentActions.createdAt)).limit(5),
   ]);
   const observation = latestObservation[0];
+  const needsLiveWeather = /\b(weather|forecast|alert|warning|today|tomorrow|outside conditions)\b/i.test(input.message);
+  let weatherContext: Awaited<ReturnType<typeof callWeatherMcp>> | null = null;
+  if (needsLiveWeather) {
+    try {
+      weatherContext = await callWeatherMcp("get_weather_summary", { latitude: location.latitude, longitude: location.longitude, include: ["current", "forecast", "alerts"], days: 2, detail: "summary", units: "metric" });
+    } catch { /* the durable HeatCheck record remains available as fallback */ }
+  }
   const context = {
     location: { name: location.name },
     latestObservation: observation ? {
@@ -50,6 +58,7 @@ export async function chatWithHeatCheck(input: {
     latestRun: latestRun[0] ? { id: latestRun[0].id, status: latestRun[0].status, goal: latestRun[0].goal, riskScore: latestRun[0].riskScore, riskLevel: latestRun[0].riskLevel, completedAt: latestRun[0].completedAt } : null,
     openIncidents: openIncidents.map(item => ({ severity: item.severity, riskScore: item.riskScore, title: item.title, status: item.status })),
     recentActions: pendingActions.map(item => ({ type: item.actionType, status: item.status, target: item.target })),
+    weatherMcp: weatherContext,
   };
 
   if (!process.env.GROQ_API_KEY)

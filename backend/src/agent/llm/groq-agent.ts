@@ -21,6 +21,11 @@ function compactState(state: HeatAgentState) {
       type: action.type,
       status: action.status,
     })),
+    optionalContext: {
+      weather: state.observations.get_weather_context,
+      satellite: state.observations.get_satellite_environment,
+      street: state.observations.get_street_environment,
+    },
   };
 }
 

@@ -42,7 +42,7 @@ export class HybridPlanner {
     if (!this.llm || state.planner.fallbackUsed) return baseline;
     try {
       const completed = new Set(state.toolCalls.filter(call => call.status === "COMPLETED").map(call => call.tool));
-      const plannerVisible = new Set(["get_satellite_environment", "get_street_environment"]);
+      const plannerVisible = new Set(["get_weather_context", "get_satellite_environment", "get_street_environment"]);
       const tools = this.registry.list().filter(tool => plannerVisible.has(tool.name) && !completed.has(tool.name)).map(tool => ({
         name: tool.name,
         description: tool.description,

@@ -14,7 +14,9 @@
 - Planner response format: JSON object
 - Transient retries: two retries for HTTP 429, 500, and 503 with exponential backoff
 
-HeatCheck does **not** currently use an MCP server in production. FortyGuard is integrated through server-side REST adapters and exposed to Qwen as a private, allowlisted function-tool registry. This keeps provider credentials and raw payloads outside the browser and gives the deterministic permission layer final authority. MCP can be added later as an interoperability adapter without changing the risk or permission model.
+HeatCheck uses the official `io.github.dgahagan/weather-mcp` server from the `@dangahagan/weather-mcp` npm package over stdio. The server provides keyless NOAA/Open-Meteo current conditions, short forecasts, and weather alerts. HeatCheck runs it as a server-side child process through the official MCP TypeScript SDK and exposes a single bounded `get_weather_context` tool to Qwen. Analytics are disabled, metric units are enforced, and only four weather methods are allowlisted.
+
+FortyGuard remains integrated through server-side REST adapters. Both integrations feed the same private tool registry, so credentials and raw payloads stay outside the browser and the deterministic permission layer retains final authority.
 
 ## Planning boundary
 
@@ -26,6 +28,7 @@ The deterministic planner always establishes the minimum safe evidence chain: pr
 | --- | --- |
 | Autonomous monitoring | Due-location worker plus protected cron endpoint |
 | FortyGuard tools | Heatmap, environment, satellite, street view, and normalized heat intelligence |
+| Weather MCP | Keyless current conditions, two-day forecast, and official alert context through `io.github.dgahagan/weather-mcp` |
 | AI tool selection | Qwen chooses optional context tools after the deterministic safety baseline |
 | Deterministic scoring | Temperature, apparent temperature/heat index, wet bulb, humidity, solar load, exposure, anomaly, vegetation, built-up surface, and air-quality context |
 | Hotspots and trends | GeoJSON anomaly detection and improving/stable/worsening comparison |
