@@ -251,21 +251,53 @@ export function createAgentToolRegistry() {
           string,
           Record<string, unknown>
         >;
-        const temperature = Number(stats.Temperature_stats?.Mean ?? 35);
+        const temperatureStats = stats.Temperature_stats ?? stats.temperature_stats ?? {};
+        const heatmapTemperature = Number(
+          temperatureStats.Mean ??
+          temperatureStats.mean ??
+          temperatureStats.Maximum ??
+          temperatureStats.maximum
+        );
+        const previousTemperature = typeof state.previousAnalysis?.temperature === "number"
+          ? state.previousAnalysis.temperature
+          : Number.NaN;
+        const temperature = Number.isFinite(heatmapTemperature)
+          ? heatmapTemperature
+          : Number.isFinite(previousTemperature)
+            ? previousTemperature
+            : 35;
         const provider = new FortyGuardClient();
-        const submitted = await provider.submitEnvironmentalParameters({
-          latitude: input.latitude,
-          longitude: input.longitude,
-          temperature,
-          occurredAt: new Date(),
-        });
-        const environment = await provider.awaitActivity(submitted.activityId);
-        return provider.normalize({
-          heatmap: { status: "Completed", result: heatmap?.result, raw: {} },
-          environment,
-          latitude: input.latitude,
-          longitude: input.longitude,
-        });
+        try {
+          const submitted = await provider.submitEnvironmentalParameters({
+            latitude: input.latitude,
+            longitude: input.longitude,
+            temperature,
+            occurredAt: new Date(),
+          });
+          const environment = await provider.awaitActivity(submitted.activityId);
+          return provider.normalize({
+            heatmap: { status: "Completed", result: heatmap?.result, raw: {} },
+            environment,
+            latitude: input.latitude,
+            longitude: input.longitude,
+          });
+        } catch (error) {
+          state.events.push({
+            type: "tool.degraded",
+            message: "Environmental conditions were unavailable; HeatCheck continued with thermal-map evidence.",
+            metadata: {
+              tool: "get_environmental_conditions",
+              reason: error instanceof FortyGuardError ? error.code : "UPSTREAM_UNAVAILABLE",
+            },
+            createdAt: new Date().toISOString(),
+          });
+          return provider.normalize({
+            heatmap: { status: "Completed", result: heatmap?.result, raw: {} },
+            environment: { status: "Unavailable", result: {}, raw: {} },
+            latitude: input.latitude,
+            longitude: input.longitude,
+          });
+        }
       },
     })
   );

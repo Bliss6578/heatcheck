@@ -17,6 +17,28 @@ describe("FortyGuard normalization and verification fixtures", () => {
     expect(observation.aqi).toBe(93);
   });
 
+  it("preserves heatmap evidence when environmental parameters are unavailable", () => {
+    const observation = new FortyGuardClient("test-key").normalize({
+      heatmap: {
+        status: "Completed",
+        raw: {},
+        result: {
+          stats_data: {
+            Temperature_stats: { Minimum: 32, Maximum: 39, Mean: 36 },
+          },
+        },
+      },
+      environment: { status: "Unavailable", raw: {}, result: {} },
+      latitude: 33.4484,
+      longitude: -112.074,
+    });
+
+    expect(observation.temperature).toBe(36);
+    expect(observation.maximumTemperature).toBe(39);
+    expect(observation.relativeHumidity).toBeNull();
+    expect(observation.source).toBe("FORTYGUARD");
+  });
+
   it("uses a clearly labelled verification fixture with a lower deterministic risk than the simulated baseline", () => {
     const baseline = phoenixSimulation(33.4484, -112.074);
     const verification = phoenixVerificationSimulation(33.4484, -112.074);
