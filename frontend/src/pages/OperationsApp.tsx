@@ -92,21 +92,39 @@ function LocationMap({
   hotspots?: MappableHotspot[];
 }) {
   const mapNode = useRef<HTMLDivElement>(null);
-  const [mapMode, setMapMode] = useState<"streets" | "terrain">("streets");
+  const [mapMode, setMapMode] = useState<"heat" | "street" | "satellite" | "terrain">("heat");
 
   useEffect(() => {
     if (!selectedLocation || !mapNode.current) return;
     const map = L.map(mapNode.current, { zoomControl: true }).setView(
       [selectedLocation.latitude, selectedLocation.longitude], 13
     );
-    const tiles = mapMode === "terrain"
-      ? "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
-      : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-    L.tileLayer(tiles, {
-      maxZoom: mapMode === "terrain" ? 17 : 19,
-      attribution: mapMode === "terrain"
-        ? '&copy; OpenStreetMap contributors, SRTM | Map style &copy; OpenTopoMap'
-        : '&copy; OpenStreetMap contributors',
+    const tileLayers = {
+      heat: {
+        url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors',
+      },
+      street: {
+        url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors',
+      },
+      satellite: {
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+      },
+      terrain: {
+        url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+        maxZoom: 17,
+        attribution: '&copy; OpenStreetMap contributors, SRTM | Map style &copy; OpenTopoMap',
+      },
+    } as const;
+    const tileLayer = tileLayers[mapMode];
+    L.tileLayer(tileLayer.url, {
+      maxZoom: tileLayer.maxZoom,
+      attribution: tileLayer.attribution,
     }).addTo(map);
     const marker = L.circleMarker([selectedLocation.latitude, selectedLocation.longitude], {
       radius: 8, color: "#fff", weight: 2, fillColor: "#ff6b2c", fillOpacity: 1,
@@ -114,7 +132,7 @@ function LocationMap({
     const markerLabel = document.createElement("strong");
     markerLabel.textContent = selectedLocation.name;
     marker.bindPopup(markerLabel);
-    if (geojson && typeof geojson === "object") {
+    if (mapMode === "heat" && geojson && typeof geojson === "object") {
       try {
         const layer = L.geoJSON(geojson as GeoJSON.GeoJsonObject, {
           style: feature => {
@@ -131,7 +149,7 @@ function LocationMap({
         if (layer.getBounds().isValid()) map.fitBounds(layer.getBounds(), { padding: [24, 24] });
       } catch (error) { console.warn("Heatcheck could not render provider GeoJSON.", error); }
     }
-    hotspots.forEach(hotspot => {
+    if (mapMode === "heat") hotspots.forEach(hotspot => {
       const color = heatColor(hotspot.temperature);
       L.circle([hotspot.latitude, hotspot.longitude], {
         radius: 220,
@@ -159,18 +177,19 @@ function LocationMap({
       {selectedLocation ? (
         <div ref={mapNode} className="ops-google-map" />
       ) : (
-        <div className="ops-live-map__empty">Add a location to open Google Maps.</div>
+        <div className="ops-live-map__empty">Add a location to open the interactive map.</div>
       )}
       {selectedLocation && (
-        <div className="ops-map-mode-switcher">
-          {(["streets", "terrain"] as const).map(mode => (
+        <div className="ops-map-mode-switcher" aria-label="Map display mode">
+          {(["heat", "street", "satellite", "terrain"] as const).map(mode => (
             <button
               type="button"
               key={mode}
               className={mapMode === mode ? "is-selected" : ""}
               onClick={() => setMapMode(mode)}
+              aria-pressed={mapMode === mode}
             >
-              {mode === "streets" ? "Heat map" : mode}
+              {mode === "heat" ? "Heat map" : mode}
             </button>
           ))}
         </div>
