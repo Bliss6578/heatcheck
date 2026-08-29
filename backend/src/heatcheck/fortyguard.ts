@@ -3,9 +3,10 @@ import { createBoundingPolygon, detectHotspots } from "./geo.js";
 
 const FORTYGUARD_BASE_URL = `${(process.env.FORTYGUARD_BASE_URL ?? "https://api.fortyguard.com").replace(/\/$/, "")}/v1`;
 const MAX_POLL_ATTEMPTS = Number(
-  process.env.FORTYGUARD_MAX_POLL_ATTEMPTS ?? 15
+  process.env.FORTYGUARD_MAX_POLL_ATTEMPTS ?? 10
 );
-const POLL_DELAY_MS = Number(process.env.FORTYGUARD_POLL_INTERVAL_MS ?? 2_000);
+const POLL_DELAY_MS = Number(process.env.FORTYGUARD_POLL_INTERVAL_MS ?? 750);
+const REQUEST_TIMEOUT_MS = Number(process.env.FORTYGUARD_REQUEST_TIMEOUT_MS ?? 12_000);
 
 type ProviderActivity = { activityId: string; endpoint: string; raw: unknown };
 type ActivityResult = {
@@ -79,7 +80,7 @@ export class FortyGuardClient {
     let response: Response | undefined;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        response = await fetch(`${FORTYGUARD_BASE_URL}${path}`, { ...init, headers: { "api-key": this.apiKey, "Content-Type": "application/json", ...(init.headers ?? {}) }, signal: AbortSignal.timeout(25_000) });
+        response = await fetch(`${FORTYGUARD_BASE_URL}${path}`, { ...init, headers: { "api-key": this.apiKey, "Content-Type": "application/json", ...(init.headers ?? {}) }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
       } catch (error) {
         if (attempt < 2) { await new Promise(resolve => setTimeout(resolve, process.env.NODE_ENV === "test" ? 0 : 250 * 2 ** attempt)); continue; }
         if (error instanceof DOMException && error.name === "TimeoutError") throw new FortyGuardError("TIMEOUT", "FortyGuard did not respond within the request timeout.");

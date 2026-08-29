@@ -34,6 +34,8 @@ The source trees are physically separated while retaining a single root package 
 
 All provider requests originate on the server. `FORTYGUARD_API_KEY` is never part of a browser response or a `VITE_*` variable.
 
+Live analysis is bounded for responsiveness: provider activities poll at 750 ms for up to 10 attempts by default, and normalized heatmap/environment results are cached for the configured cache TTL. Increase those values only when a specific provider region consistently needs longer processing time.
+
 ## Local setup
 
 1. Install Node.js 20+ and pnpm 10.

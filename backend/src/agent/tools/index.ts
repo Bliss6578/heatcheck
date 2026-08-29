@@ -246,6 +246,9 @@ export function createAgentToolRegistry() {
           | undefined;
         if (heatmap?.source === "mock" && heatmap.mockObservation)
           return heatmap.mockObservation;
+        const cacheKey = analysisCacheKey({ ...input, analysisType: "agent-environment" });
+        const cached = getCached<NormalizedObservation>(cacheKey);
+        if (cached) return { ...cached, cacheHit: true };
         await enforceProviderBudget(state);
         const stats = (heatmap?.result?.stats_data ?? {}) as Record<
           string,
@@ -275,12 +278,14 @@ export function createAgentToolRegistry() {
             occurredAt: new Date(),
           });
           const environment = await provider.awaitActivity(submitted.activityId);
-          return provider.normalize({
+          const normalized = provider.normalize({
             heatmap: { status: "Completed", result: heatmap?.result, raw: {} },
             environment,
             latitude: input.latitude,
             longitude: input.longitude,
           });
+          setCached(cacheKey, normalized);
+          return normalized;
         } catch (error) {
           state.events.push({
             type: "tool.degraded",
@@ -291,12 +296,14 @@ export function createAgentToolRegistry() {
             },
             createdAt: new Date().toISOString(),
           });
-          return provider.normalize({
+          const normalized = provider.normalize({
             heatmap: { status: "Completed", result: heatmap?.result, raw: {} },
             environment: { status: "Unavailable", result: {}, raw: {} },
             latitude: input.latitude,
             longitude: input.longitude,
           });
+          setCached(cacheKey, normalized);
+          return normalized;
         }
       },
     })

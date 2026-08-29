@@ -60,7 +60,7 @@ export async function executeRegisteredTool(
   const input = tool.schema.parse(args);
   const started = Date.now();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeout = setTimeout(() => controller.abort(), Number(process.env.HEATCHECK_AGENT_TOOL_TIMEOUT_MS ?? 18_000));
   try {
     const output = await tool.execute(input, {
       state,

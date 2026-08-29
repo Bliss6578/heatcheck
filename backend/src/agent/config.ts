@@ -11,6 +11,8 @@ export const AGENT_CONFIG = {
   ),
   temperature: 0.2,
   topP: 0.9,
-  maxCompletionTokens: 700,
-  timeoutMs: 20_000,
+  // The model only selects optional, allowlisted context after deterministic
+  // analysis. A compact response keeps live analyses responsive.
+  maxCompletionTokens: 240,
+  timeoutMs: 8_000,
 };
