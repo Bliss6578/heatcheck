@@ -35,6 +35,8 @@ const productTabs = [
   "/app/settings",
 ] as const;
 
+const HISTORY_PAGE_SIZE = 5;
+
 function readableDate(value: Date | string | null | undefined) {
   if (!value) return "No analysis yet";
   return new Date(value).toLocaleString([], {
@@ -351,6 +353,7 @@ function OperationsContent() {
   const [agentResult, setAgentResult] = useState<any>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [selectedRunId, setSelectedRunId] = useState("");
+  const [historyPage, setHistoryPage] = useState(0);
   const [reportPending, setReportPending] = useState(false);
   const [alertEmail, setAlertEmail] = useState("");
   const [alertSms, setAlertSms] = useState("");
@@ -389,7 +392,7 @@ function OperationsContent() {
       const response = await fetch(`/api/reports/heat-intelligence?organizationId=${encodeURIComponent(organizationId)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!response.ok) throw new Error("Report generation failed.");
       const blob = await response.blob(); const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a"); anchor.href = url; anchor.download = `heat-intelligence-${new Date().toISOString().slice(0, 10)}.html`; anchor.click(); URL.revokeObjectURL(url);
+      const anchor = document.createElement("a"); anchor.href = url; anchor.download = `heat-intelligence-${new Date().toISOString().slice(0, 10)}.pdf`; anchor.click(); URL.revokeObjectURL(url);
     } finally { setReportPending(false); }
   };
   const streamAgent = async () => {
@@ -450,6 +453,9 @@ function OperationsContent() {
     const organization = dashboard.data?.workspace.organization as any; if (!organization) return;
     setAlertEmail(organization.notificationPolicy?.emailTo ?? ""); setAlertSms(organization.notificationPolicy?.smsTo ?? ""); setNotificationThreshold(String(organization.notificationPolicy?.minimumRiskScore ?? 65)); setProviderDailyLimit(String(organization.providerPolicy?.dailyCallLimit ?? 500));
   }, [dashboard.data?.workspace.organization]);
+  useEffect(() => {
+    setHistoryPage(0);
+  }, [selectedLocationId]);
   const createLocation = trpc.heatcheck.locations.create.useMutation({
     onSuccess: async location => {
       setNewLocationName("");
@@ -509,6 +515,11 @@ function OperationsContent() {
     ? data.locationConditions.find(item => item.locationId === selectedLocation.id)
     : undefined;
   const observation = selectedConditions?.observation ?? null;
+  const history = data.analytics.trend.slice().reverse();
+  const historyPageCount = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
+  const activeHistoryPage = Math.min(historyPage, historyPageCount - 1);
+  const historyStart = activeHistoryPage * HISTORY_PAGE_SIZE;
+  const visibleHistory = history.slice(historyStart, historyStart + HISTORY_PAGE_SIZE);
   const selectedHotspots = selectedConditions?.hotspots ?? [];
   const heatmapGeojson =
     observation?.summary && typeof observation.summary === "object"
@@ -607,7 +618,7 @@ function OperationsContent() {
               <i>→</i>
               <span>RISK ENGINE</span>
               <i>→</i>
-              <span>QWEN PLAN</span>
+              <span>HEATCHECK DECISION</span>
               <i>→</i>
               <span>ALERT · RECOMMEND · MONITOR</span>
             </div>
@@ -649,8 +660,8 @@ function OperationsContent() {
                   <span>PLANNER</span>
                   <strong>
                     {agentResult.agent.fallbackUsed
-                      ? "DETERMINISTIC FALLBACK"
-                      : "GROQ / QWEN"}
+                      ? "HEATCHECK CORE · FALLBACK"
+                      : "HEATCHECK ENGINE"}
                   </strong>
                 </div>
                 <ol>
@@ -666,7 +677,7 @@ function OperationsContent() {
           <article className="ops-chat-panel">
             <div className="ops-chat-panel__head">
               <div><p>WORKSPACE COPILOT</p><h2>Ask HeatCheck</h2></div>
-              <span><Bot size={16} /> QWEN / GROQ</span>
+              <span><Bot size={16} /> HEATCHECK</span>
             </div>
             <AIChatBox
               messages={chatMessages}
@@ -904,16 +915,13 @@ function OperationsContent() {
               </div>
               <Activity size={18} />
             </div>
-            <div className="ops-history">
+            <div className="ops-history ops-history--compact">
               <div className="ops-history__row ops-history__head">
                 <span>Date</span>
                 <span>Risk</span>
                 <span>Level</span>
               </div>
-              {data.analytics.trend
-                .slice()
-                .reverse()
-                .map(point => (
+              {visibleHistory.map(point => (
                   <div
                     className="ops-history__row"
                     key={`${point.observedAt}-${point.riskScore}`}
@@ -924,8 +932,36 @@ function OperationsContent() {
                       {displayRisk(point.riskLevel)}
                     </span>
                   </div>
-                ))}
+              ))}
             </div>
+            {history.length > HISTORY_PAGE_SIZE && (
+              <div className="ops-history__pagination">
+                <small>
+                  Showing {historyStart + 1}–
+                  {Math.min(historyStart + HISTORY_PAGE_SIZE, history.length)} of {history.length}
+                </small>
+                <div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={activeHistoryPage === 0}
+                    onClick={() => setHistoryPage(page => Math.max(0, page - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={activeHistoryPage >= historyPageCount - 1}
+                    onClick={() => setHistoryPage(page => Math.min(historyPageCount - 1, page + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </article>
           <article className="ops-panel ops-panel--agent-runs">
             <div className="ops-panel__head">

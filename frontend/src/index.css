@@ -225,6 +225,14 @@ h1, h2, h3, p { margin-top: 0; }
 .ops-live-agent-events i { width: .45rem; height: .45rem; flex: 0 0 auto; border-radius: 50%; background: var(--orange); animation: signal-pulse 1.5s infinite; }
 .ops-history button.ops-history__row { width: 100%; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .ops-history button.ops-history__row:hover { background: rgba(255,107,44,.06); }
+.ops-panel--history { min-height: 0; }
+.ops-history--compact { gap: 0; }
+.ops-history--compact .ops-history__row { min-height: 2.35rem; padding: .25rem 0; }
+.ops-history__pagination { display: flex; align-items: center; justify-content: space-between; gap: .65rem; margin-top: .75rem; padding-top: .65rem; border-top: 1px solid var(--line); }
+.ops-history__pagination small { color: var(--ink-soft); font-family: "DM Mono", monospace; font-size: .52rem; letter-spacing: .04em; }
+.ops-history__pagination > div { display: flex; gap: .4rem; }
+.ops-history__pagination button { min-height: 2rem; padding: .32rem .62rem; font-family: "DM Mono", monospace; font-size: .54rem; }
+@media (max-width: 560px) { .ops-history__pagination { align-items: flex-start; flex-direction: column; } }
 .ops-run-detail { margin-top: 1rem; padding: 1rem; border: 1px solid var(--line); background: var(--paper); }
 .ops-run-detail h3, .ops-run-detail h4 { margin: 0 0 .7rem; }
 .ops-run-detail ol { display: grid; gap: .55rem; margin: 1rem 0; padding: 0; list-style: none; }
