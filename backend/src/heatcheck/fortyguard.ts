@@ -53,6 +53,21 @@ function firstNumber(value: unknown): number | null {
   return numberFrom(value);
 }
 
+export function extractHeatmapGeojson(
+  result: Record<string, unknown> | undefined
+): Record<string, unknown> | null {
+  for (const key of ["map_data", "geojson", "data"] as const) {
+    const candidate = result?.[key];
+    if (
+      candidate &&
+      typeof candidate === "object" &&
+      !Array.isArray(candidate)
+    )
+      return candidate as Record<string, unknown>;
+  }
+  return null;
+}
+
 export function areaOfInterest(
   latitude: number,
   longitude: number,
@@ -280,8 +295,10 @@ export class FortyGuardClient {
     const maximum = numberFrom(
       temperatureStats.Maximum ?? temperatureStats.maximum
     );
-    const geojson =
-      input.heatmap.result?.geojson ?? input.heatmap.result?.data ?? null;
+    const geojson = extractHeatmapGeojson(input.heatmap.result);
+    const heatmapFeatureCount = Array.isArray(geojson?.features)
+      ? geojson.features.length
+      : 0;
     const detected = detectHotspots(geojson);
     return {
       observedAt: new Date(),
@@ -304,6 +321,8 @@ export class FortyGuardClient {
         provider: "FortyGuard",
         heatmapStats,
         geojson,
+        heatmapFeatureCount,
+        heatmapProviderStatus: heatmapFeatureCount ? "AVAILABLE" : "EMPTY",
         environmentalMetadata: input.environment.result?.metadata ?? null,
       },
       hotspots: detected.length

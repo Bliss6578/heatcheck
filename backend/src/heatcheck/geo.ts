@@ -87,7 +87,13 @@ export function detectHotspots(geojson: unknown): DetectedHotspot[] {
       geometry?: { coordinates?: unknown };
     };
     const properties = item.properties ?? {};
-    const temperature = ["temperature", "Temperature", "tcm", "value"]
+    const temperature = [
+      "average_temperature",
+      "temperature",
+      "Temperature",
+      "tcm",
+      "value",
+    ]
       .map(key => properties[key])
       .find(
         (value): value is number =>

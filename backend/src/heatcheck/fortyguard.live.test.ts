@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { FortyGuardClient } from "./fortyguard";
+import { extractHeatmapGeojson, FortyGuardClient } from "./fortyguard";
+import { createBoundingPolygon } from "./geo";
 
 const runLiveProbe = process.env.FORTYGUARD_API_KEY ? describe : describe.skip;
 const runRegionalProbe = process.env.FORTYGUARD_API_KEY && process.env.RUN_FORTYGUARD_REGIONAL_TESTS === "true" ? describe : describe.skip;
@@ -20,6 +21,27 @@ runLiveProbe("FortyGuard Live Mode credential", () => {
     expect(result.activityId).toEqual(expect.any(String));
     expect(result.activityId.length).toBeGreaterThan(4);
   }, 30_000);
+
+  it("returns renderable thermal cells in the documented map_data shape", async () => {
+    const latitude = 40.7115;
+    const longitude = -74.01;
+    const client = new FortyGuardClient();
+    const submitted = await client.submitHeatmap({
+      latitude,
+      longitude,
+      polygonGeojson: createBoundingPolygon(latitude, longitude, 0.7),
+      occurredAt: new Date("2024-07-15T14:00:00Z"),
+    });
+    const completed = await client.awaitActivity(submitted.activityId);
+    const geojson = extractHeatmapGeojson(completed.result);
+    const features = Array.isArray(geojson?.features) ? geojson.features : [];
+
+    expect(completed.status.toLowerCase()).toBe("completed");
+    expect(features.length).toBeGreaterThan(0);
+    expect(features[0]).toMatchObject({
+      properties: { average_temperature: expect.any(Number) },
+    });
+  }, 60_000);
 });
 
 runRegionalProbe("FortyGuard regional capability matrix", () => {

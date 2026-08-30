@@ -6,7 +6,11 @@ import { getDb } from "../../db.js";
 import { nextAdaptiveAnalysisAt } from "../../heatcheck/adaptiveMonitoring.js";
 import { deliverManagedHeatAlert } from "../../heatcheck/notifications.js";
 import { analysisCacheKey, getCached, setCached } from "../../heatcheck/cache.js";
-import { FortyGuardClient, FortyGuardError } from "../../heatcheck/fortyguard.js";
+import {
+  extractHeatmapGeojson,
+  FortyGuardClient,
+  FortyGuardError,
+} from "../../heatcheck/fortyguard.js";
 import {
   createBoundingPolygon,
   detectHotspots,
@@ -214,14 +218,7 @@ export function createAgentToolRegistry() {
           source: "fortyguard",
           activityId: activity.activityId,
           result: result.result ?? {},
-          geojson:
-            result.result?.geojson ??
-            result.result?.data ??
-            createBoundingPolygon(
-              input.latitude,
-              input.longitude,
-              input.radiusKm
-            ),
+          geojson: extractHeatmapGeojson(result.result),
         };
         setCached(cacheKey, normalized); return normalized;
       },

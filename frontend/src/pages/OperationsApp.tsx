@@ -81,6 +81,27 @@ function heatColor(score: number) {
   return "#65856b";
 }
 
+function geojsonFeatureCount(geojson: unknown) {
+  if (!geojson || typeof geojson !== "object") return 0;
+  const features = (geojson as { features?: unknown }).features;
+  return Array.isArray(features) ? features.length : 0;
+}
+
+function featureTemperature(properties: Record<string, unknown>) {
+  const value = [
+    properties.average_temperature,
+    properties.temperature,
+    properties.Temperature,
+    properties.tcm,
+    properties.value,
+    properties.mean_temperature,
+  ].find(candidate => {
+    const parsed = Number(candidate);
+    return candidate !== null && candidate !== "" && Number.isFinite(parsed);
+  });
+  return value === undefined ? null : Number(value);
+}
+
 function LocationMap({
   locations,
   selectedLocation,
@@ -96,6 +117,7 @@ function LocationMap({
 }) {
   const mapNode = useRef<HTMLDivElement>(null);
   const [mapMode, setMapMode] = useState<"heat" | "street" | "satellite" | "terrain">("heat");
+  const thermalCellCount = geojsonFeatureCount(geojson);
 
   useEffect(() => {
     if (!selectedLocation || !mapNode.current) return;
@@ -140,13 +162,13 @@ function LocationMap({
         const layer = L.geoJSON(geojson as GeoJSON.GeoJsonObject, {
           style: feature => {
             const props = feature?.properties ?? {};
-            const temperature = Number(props.temperature ?? props.Temperature ?? props.tcm ?? 0);
-            const color = heatColor(temperature);
+            const temperature = featureTemperature(props);
+            const color = heatColor(temperature ?? 0);
             return { color, fillColor: color, fillOpacity: .58, weight: 1 };
           },
           onEachFeature: (feature, featureLayer) => {
-            const value = feature.properties?.temperature ?? feature.properties?.Temperature ?? feature.properties?.tcm;
-            if (value != null) featureLayer.bindTooltip(`${Number(value).toFixed(1)}°C`);
+            const value = featureTemperature(feature.properties ?? {});
+            if (value != null) featureLayer.bindTooltip(`${value.toFixed(1)}°C`);
           },
         }).addTo(map);
         if (layer.getBounds().isValid()) map.fitBounds(layer.getBounds(), { padding: [24, 24] });
@@ -212,6 +234,13 @@ function LocationMap({
           <div ref={mapNode} className="ops-google-map" />
         ) : (
           <div className="ops-live-map__empty">Add a location to open the interactive map.</div>
+        )}
+        {selectedLocation && mapMode === "heat" && thermalCellCount === 0 && (
+          <div className="ops-map-data-state">
+            {geojson && typeof geojson === "object"
+              ? "FortyGuard returned no thermal cells for this area and time."
+              : "Run an analysis to load the FortyGuard thermal layer."}
+          </div>
         )}
         {selectedLocation ? (
           <div className="ops-live-map__label">

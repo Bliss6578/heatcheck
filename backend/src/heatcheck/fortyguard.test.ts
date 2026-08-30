@@ -39,6 +39,47 @@ describe("FortyGuard normalization and verification fixtures", () => {
     expect(observation.source).toBe("FORTYGUARD");
   });
 
+  it("normalizes FortyGuard map_data as renderable GeoJSON", () => {
+    const mapData = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: { average_temperature: 39 },
+          geometry: {
+            type: "Polygon",
+            coordinates: [[
+              [-112.08, 33.44],
+              [-112.07, 33.44],
+              [-112.07, 33.45],
+              [-112.08, 33.45],
+              [-112.08, 33.44],
+            ]],
+          },
+        },
+      ],
+    };
+    const observation = new FortyGuardClient("test-key").normalize({
+      heatmap: {
+        status: "Completed",
+        raw: {},
+        result: {
+          map_data: mapData,
+          stats_data: {
+            Temperature_stats: { Minimum: 38, Maximum: 39, Mean: 38.5 },
+          },
+        },
+      },
+      environment: { status: "Unavailable", raw: {}, result: {} },
+      latitude: 33.4484,
+      longitude: -112.074,
+    });
+
+    expect(observation.summary.geojson).toEqual(mapData);
+    expect(observation.summary.heatmapFeatureCount).toBe(1);
+    expect(observation.summary.heatmapProviderStatus).toBe("AVAILABLE");
+  });
+
   it("uses a clearly labelled verification fixture with a lower deterministic risk than the simulated baseline", () => {
     const baseline = phoenixSimulation(33.4484, -112.074);
     const verification = phoenixVerificationSimulation(33.4484, -112.074);
